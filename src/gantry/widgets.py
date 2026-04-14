@@ -21,6 +21,22 @@ class ResourceTable(DataTable):
             self.row_data = row_data
             super().__init__()
 
+    CSS = """
+    ResourceTable {
+        height: 1fr;
+        width: 100%;
+    }
+
+    ResourceTable > DataTable {
+        height: 1fr;
+        border: solid $accent;
+    }
+
+    ResourceTable:focus {
+        border: double $accent;
+    }
+    """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._all_rows: Dict[str, List[Any]] = {}
@@ -106,6 +122,25 @@ class SearchInput(Input):
             self.value = value
             super().__init__()
 
+    CSS = """
+    SearchInput {
+        height: 1;
+        width: 100%;
+        border: solid $accent;
+        padding: 0 1;
+        margin: 1 0;
+    }
+
+    SearchInput:focus {
+        border: double $accent;
+        background: $boost;
+    }
+
+    SearchInput Input {
+        border: none;
+    }
+    """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.prefix = "/"
@@ -123,6 +158,28 @@ class SearchInput(Input):
 class StatusBar(Static):
     """
     Status bar widget showing cluster context, namespace, and connection status.
+
+    Displays errors with "Error: " prefix for clear visibility.
+    """
+
+    CSS = """
+    StatusBar {
+        height: 1;
+        border: solid $accent;
+        padding: 0 1;
+        background: $panel;
+        color: $text;
+    }
+
+    StatusBar.error {
+        background: $error;
+        color: $text;
+    }
+
+    StatusBar.success {
+        background: $panel;
+        color: $text;
+    }
     """
 
     def __init__(
@@ -140,7 +197,23 @@ class StatusBar(Static):
 
     def render(self) -> str:
         """Render the status bar content."""
-        return f"Context: {self.context} | Namespace: {self.namespace} | Status: {self.status}"
+        # Format with more readable status display
+        parts = []
+        if self.context != "N/A":
+            parts.append(f"Context: {self.context}")
+        if self.namespace != "N/A":
+            parts.append(f"Namespace: {self.namespace}")
+
+        # Add status with better formatting for errors
+        if self.status.startswith("Error"):
+            status_text = self.status
+        elif self.status.startswith("Status:"):
+            status_text = self.status
+        else:
+            status_text = f"Status: {self.status}"
+
+        parts.append(status_text)
+        return " | ".join(parts)
 
     def update_context(self, context: str) -> None:
         """Update the displayed context."""
@@ -153,6 +226,13 @@ class StatusBar(Static):
         self.refresh()
 
     def update_status(self, status: str) -> None:
-        """Update the displayed status."""
+        """Update the displayed status and apply error styling if needed."""
         self.status = status
+        # Add error class if status contains "Error"
+        if "Error" in status or "error" in status.lower():
+            self.add_class("error")
+            self.remove_class("success")
+        else:
+            self.add_class("success")
+            self.remove_class("error")
         self.refresh()

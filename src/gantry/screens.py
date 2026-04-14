@@ -1,8 +1,8 @@
 """Screen components for Gantry TUI."""
 
 from typing import Any, Dict, List, Optional
-from textual.screen import Screen
-from textual.containers import Container, Vertical, Horizontal
+from textual.screen import Screen, ModalScreen
+from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
 from textual.widgets import Label, Static, Button, OptionList, Input, TextArea
 from textual.widget import Widget
 from textual.binding import Binding
@@ -15,12 +15,138 @@ from gantry import k8s
 from gantry.widgets import ResourceTable, SearchInput, StatusBar
 
 
+class ContextPickerModal(ModalScreen):
+    """Modal for selecting Kubernetes context and namespace."""
+
+    BINDINGS = [
+        ("enter", "submit", "Select"),
+        ("escape", "cancel", "Cancel"),
+    ]
+
+    CSS = """
+    ContextPickerModal {
+        align: center middle;
+    }
+
+    #picker-container {
+        width: 60;
+        height: auto;
+        border: solid $accent;
+        background: $panel;
+        padding: 1;
+    }
+
+    #picker-header {
+        dock: top;
+        height: 1;
+        margin-bottom: 1;
+        text-style: bold;
+    }
+
+    #contexts-section,
+    #namespaces-section {
+        height: auto;
+        margin-bottom: 1;
+    }
+
+    #contexts-label,
+    #namespaces-label {
+        height: 1;
+        text-style: underline;
+        margin-bottom: 1;
+    }
+
+    OptionList {
+        height: auto;
+        max-height: 10;
+        width: 100%;
+        border: solid $accent;
+        background: $surface;
+    }
+
+    #picker-footer {
+        dock: bottom;
+        height: 1;
+        margin-top: 1;
+        text-style: dim;
+    }
+    """
+
+    def __init__(self, contexts: List[Dict[str, Any]], current_context: str, current_namespace: str):
+        super().__init__()
+        self.contexts = contexts
+        self.current_context = current_context
+        self.current_namespace = current_namespace
+        self.namespaces = ["default", "kube-system", "kube-public"]  # Common namespaces
+        self.selected_context = current_context
+        self.selected_namespace = current_namespace
+
+    def compose(self):
+        """Compose the context picker modal."""
+        with Container(id="picker-container"):
+            yield Label("Select Context & Namespace", id="picker-header")
+
+            with Vertical(id="contexts-section"):
+                yield Label("Contexts:", id="contexts-label")
+                options = [
+                    (ctx.get("name", "Unknown"), ctx.get("name", "Unknown"))
+                    for ctx in self.contexts
+                ]
+                yield OptionList(id="context-list", *options)
+
+            with Vertical(id="namespaces-section"):
+                yield Label("Namespaces:", id="namespaces-label")
+                ns_options = [
+                    (ns, ns) for ns in self.namespaces
+                ]
+                yield OptionList(id="namespace-list", *ns_options)
+
+            yield Label("Press Enter to select or Esc to cancel", id="picker-footer")
+
+    def on_mount(self) -> None:
+        """Focus and highlight current selections."""
+        try:
+            ctx_list = self.query_one("#context-list", OptionList)
+            ns_list = self.query_one("#namespace-list", OptionList)
+
+            # Find and highlight current selections
+            for i, opt in enumerate(ctx_list.options):
+                if opt[1] == self.current_context:
+                    ctx_list.highlighted = i
+                    break
+
+            for i, opt in enumerate(ns_list.options):
+                if opt[1] == self.current_namespace:
+                    ns_list.highlighted = i
+                    break
+
+            ctx_list.focus()
+        except Exception:
+            pass
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        """Handle option selection."""
+        if event.option_list.id == "context-list":
+            self.selected_context = event.option_list.options[event.cursor_position][1]
+        elif event.option_list.id == "namespace-list":
+            self.selected_namespace = event.option_list.options[event.cursor_position][1]
+
+    def action_submit(self) -> None:
+        """Submit the selected context and namespace."""
+        self.dismiss((self.selected_context, self.selected_namespace))
+
+    def action_cancel(self) -> None:
+        """Cancel the picker without selecting."""
+        self.dismiss(None)
+
+
 class ClusterScreen(Screen):
     """Screen for Kubernetes cluster exploration and management."""
 
     BINDINGS = [
         ("tab", "switch_screen('helm')", "Switch to Helm View"),
         ("slash", "focus_search", "Search"),
+        ("c", "show_context_picker", "Pick Context"),
         ("d", "describe_resource", "Describe"),
         ("l", "show_logs", "Logs"),
         ("r", "refresh_resources", "Refresh"),
@@ -37,17 +163,27 @@ class ClusterScreen(Screen):
     #header-container {
         height: 3;
         border: solid $accent;
+        padding: 0 1;
     }
 
     #resource-type-label {
         height: 1;
         width: 100%;
         content-align: left middle;
+        text-style: bold;
     }
 
     #resource-type-selector {
         height: 1;
         width: 100%;
+    }
+
+    #resource-type-selector Button {
+        margin-right: 1;
+    }
+
+    #resource-type-selector Button:focus {
+        background: $accent;
     }
 
     #body-container {
@@ -59,10 +195,16 @@ class ClusterScreen(Screen):
         width: 100%;
     }
 
+    ResourceTable > DataTable {
+        background: $surface;
+    }
+
     SearchInput {
         height: 1;
         width: 100%;
         display: none;
+        border: solid $accent;
+        padding: 0 1;
     }
 
     SearchInput.show {
@@ -76,6 +218,7 @@ class ClusterScreen(Screen):
         background: $boost;
         color: $text;
         padding: 1;
+        margin: 1 0;
     }
 
     #detail-panel.show {
@@ -86,6 +229,7 @@ class ClusterScreen(Screen):
     StatusBar {
         height: 1;
         border: solid $accent;
+        padding: 0 1;
     }
     """
 
@@ -367,6 +511,36 @@ class ClusterScreen(Screen):
         """Refresh the resource list."""
         self._refresh_resources()
 
+    def action_show_context_picker(self) -> None:
+        """Show the context/namespace picker modal."""
+        contexts = k8s.list_contexts()
+        if not contexts or any("error" in ctx for ctx in contexts):
+            self.connection_status = "Error: Unable to load contexts"
+            self._update_status_bar()
+            return
+
+        modal = ContextPickerModal(contexts, self.current_context, self.current_namespace)
+        self.app.push_screen(modal, callback=self._on_context_picker_dismiss)
+
+    def _on_context_picker_dismiss(self, result: Optional[tuple]) -> None:
+        """Handle context picker result."""
+        if result:
+            new_context, new_namespace = result
+            if new_context != self.current_context:
+                # Switch context
+                switch_result = k8s.switch_context(new_context)
+                if switch_result.get("success"):
+                    self.current_context = new_context
+                    self.current_namespace = new_namespace
+                    self.connection_status = f"Switched to context '{new_context}'"
+                    self._refresh_resources()
+                else:
+                    self.connection_status = f"Error: {switch_result.get('error', 'Failed to switch context')}"
+            else:
+                self.current_namespace = new_namespace
+
+            self._update_status_bar()
+
     def watch_current_resource_type(self, new_type: str) -> None:
         """React to resource type changes."""
         self._refresh_resources()
@@ -383,6 +557,7 @@ class HelmScreen(Screen):
     BINDINGS = [
         ("tab", "switch_screen('cluster')", "Switch to Cluster View"),
         ("slash", "focus_search", "Search"),
+        ("c", "show_context_picker", "Pick Context"),
         ("enter", "execute_action('deploy')", "Deploy Chart"),
         ("r", "refresh_charts", "Refresh"),
         ("q", "quit", "Quit Gantry"),
@@ -398,12 +573,14 @@ class HelmScreen(Screen):
     #header-container {
         height: 3;
         border: solid $accent;
+        padding: 0 1;
     }
 
     #repo-label {
         height: 1;
         width: 100%;
         content-align: left middle;
+        text-style: bold;
     }
 
     #repo-selector {
@@ -415,6 +592,10 @@ class HelmScreen(Screen):
         margin-right: 1;
     }
 
+    #repo-selector Button:focus {
+        background: $accent;
+    }
+
     #body-container {
         height: 1fr;
     }
@@ -424,10 +605,16 @@ class HelmScreen(Screen):
         width: 100%;
     }
 
+    ResourceTable > DataTable {
+        background: $surface;
+    }
+
     SearchInput {
         height: 1;
         width: 100%;
         display: none;
+        border: solid $accent;
+        padding: 0 1;
     }
 
     SearchInput.show {
@@ -441,6 +628,7 @@ class HelmScreen(Screen):
         background: $boost;
         color: $text;
         padding: 1;
+        margin: 1 0;
     }
 
     #detail-panel.show {
@@ -451,6 +639,7 @@ class HelmScreen(Screen):
     StatusBar {
         height: 1;
         border: solid $accent;
+        padding: 0 1;
     }
     """
 
@@ -601,6 +790,28 @@ class HelmScreen(Screen):
         """Refresh the chart list."""
         if self._selected_repo:
             self._load_charts(self._selected_repo)
+
+    def action_show_context_picker(self) -> None:
+        """Show the context/namespace picker modal."""
+        contexts = k8s.list_contexts()
+        if not contexts or any("error" in ctx for ctx in contexts):
+            self.connection_status = "Error: Unable to load contexts"
+            self._update_status_bar()
+            return
+
+        # Use a dummy context for display
+        current_context = self.current_repo
+        modal = ContextPickerModal(contexts, current_context, self.current_namespace)
+        self.app.push_screen(modal, callback=self._on_context_picker_dismiss)
+
+    def _on_context_picker_dismiss(self, result: Optional[tuple]) -> None:
+        """Handle context picker result."""
+        if result:
+            new_context, new_namespace = result
+            # Update namespace and refresh
+            self.current_namespace = new_namespace
+            self.connection_status = f"Switched namespace to '{new_namespace}'"
+            self._update_status_bar()
 
     def action_switch_screen(self, screen: str = "cluster") -> None:
         """Switch screens via action."""

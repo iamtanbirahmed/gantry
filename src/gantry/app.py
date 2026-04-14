@@ -28,13 +28,57 @@ class GantryApp(App):
     Header {
         background: $boost;
         color: $text;
-        height: 1;
+        height: 2;
+        border-bottom: solid $accent;
+        padding: 0 1;
+    }
+
+    Header > Static {
+        width: 100%;
+        height: 100%;
+        content-align: left middle;
+        text-style: bold;
     }
 
     Footer {
         background: $boost;
         color: $text;
         height: auto;
+        border-top: solid $accent;
+        padding: 0 1;
+    }
+
+    Footer > Static {
+        width: 100%;
+        height: 100%;
+        content-align: left middle;
+    }
+
+    Button {
+        margin: 0 1;
+    }
+
+    Button:focus {
+        background: $accent;
+        text-style: bold;
+    }
+
+    DataTable {
+        height: 1fr;
+        width: 100%;
+    }
+
+    DataTable:focus {
+        border: solid $accent;
+    }
+
+    Input {
+        border: solid $accent;
+    }
+
+    Input:focus {
+        border: double $accent;
+        background: $boost;
     }
 
     #cluster-label,
