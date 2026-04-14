@@ -383,6 +383,7 @@ class HelmScreen(Screen):
     BINDINGS = [
         ("tab", "switch_screen('cluster')", "Switch to Cluster View"),
         ("slash", "focus_search", "Search"),
+        ("enter", "execute_action('deploy')", "Deploy Chart"),
         ("r", "refresh_charts", "Refresh"),
         ("q", "quit", "Quit Gantry"),
     ]
