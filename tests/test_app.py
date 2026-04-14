@@ -1,0 +1,109 @@
+"""Tests for the Gantry app shell and screen switching."""
+
+import pytest
+
+from gantry.app import GantryApp
+from gantry.screens import ClusterScreen, HelmScreen
+
+
+def test_app_initializes():
+    """Test that the app initializes correctly."""
+    app = GantryApp()
+    assert app.TITLE == "Gantry"
+    assert app.SUBTITLE == "Kubernetes Cluster Management & Helm Orchestration"
+
+
+def test_cluster_screen_exists():
+    """Test that ClusterScreen is registered."""
+    app = GantryApp()
+    assert "cluster" in app.SCREENS
+    assert app.SCREENS["cluster"] is ClusterScreen
+
+
+def test_helm_screen_exists():
+    """Test that HelmScreen is registered."""
+    app = GantryApp()
+    assert "helm" in app.SCREENS
+    assert app.SCREENS["helm"] is HelmScreen
+
+
+def test_app_has_keybindings():
+    """Test that the app has the required keybindings."""
+    app = GantryApp()
+    binding_keys = [binding.key for binding in app.BINDINGS]
+    assert "tab" in binding_keys
+    assert "q" in binding_keys
+
+
+def test_cluster_screen_created():
+    """Test that ClusterScreen can be instantiated."""
+    screen = ClusterScreen()
+    assert screen is not None
+    assert isinstance(screen, ClusterScreen)
+
+
+def test_helm_screen_created():
+    """Test that HelmScreen can be instantiated."""
+    screen = HelmScreen()
+    assert screen is not None
+    assert isinstance(screen, HelmScreen)
+
+
+def test_cluster_screen_has_bindings():
+    """Test that ClusterScreen has required keybindings."""
+    screen = ClusterScreen()
+    binding_keys = [binding[0] for binding in screen.BINDINGS]
+    assert "tab" in binding_keys
+    assert "q" in binding_keys
+
+
+def test_helm_screen_has_bindings():
+    """Test that HelmScreen has required keybindings."""
+    screen = HelmScreen()
+    binding_keys = [binding[0] for binding in screen.BINDINGS]
+    assert "tab" in binding_keys
+    assert "q" in binding_keys
+
+
+@pytest.mark.asyncio
+async def test_app_starts_on_cluster_screen():
+    """Test that the app starts on the cluster screen."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        # The initial screen should be the cluster screen
+        assert isinstance(app.screen, ClusterScreen)
+
+
+@pytest.mark.asyncio
+async def test_tab_switches_to_helm_screen():
+    """Test that pressing Tab switches from Cluster to Helm screen."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        # Start on cluster screen
+        assert isinstance(app.screen, ClusterScreen)
+
+        # Press Tab to switch
+        await pilot.press("tab")
+        await pilot.pause()
+
+        # Should now be on helm screen
+        assert isinstance(app.screen, HelmScreen)
+
+
+@pytest.mark.asyncio
+async def test_tab_switches_back_to_cluster_screen():
+    """Test that pressing Tab switches from Helm back to Cluster screen."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        # Start on cluster screen
+        assert isinstance(app.screen, ClusterScreen)
+
+        # Press Tab to switch to helm
+        await pilot.press("tab")
+        await pilot.pause()
+        assert isinstance(app.screen, HelmScreen)
+
+        # Press Tab again to switch back to cluster
+        await pilot.press("tab")
+        await pilot.pause()
+        assert isinstance(app.screen, ClusterScreen)
