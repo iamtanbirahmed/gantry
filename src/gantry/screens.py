@@ -300,10 +300,14 @@ class ClusterScreen(Screen):
 
     def _update_status_bar(self) -> None:
         """Update the status bar with current info."""
-        status_bar: StatusBar = self.query_one("#status-bar", StatusBar)
-        status_bar.update_context(self.current_context)
-        status_bar.update_namespace(self.current_namespace)
-        status_bar.update_status(self.connection_status)
+        try:
+            status_bar: StatusBar = self.query_one("#status-bar", StatusBar)
+            status_bar.update_context(self.current_context)
+            status_bar.update_namespace(self.current_namespace)
+            status_bar.update_status(self.connection_status)
+        except Exception:
+            # Status bar not mounted yet, skip update
+            pass
 
     def _refresh_resources(self) -> None:
         """Refresh the resource list based on current type."""
@@ -745,10 +749,14 @@ class HelmScreen(Screen):
 
     def _update_status_bar(self) -> None:
         """Update the status bar with current info."""
-        status_bar: StatusBar = self.query_one("#status-bar", StatusBar)
-        status_bar.update_namespace(self.current_namespace)
-        status_bar.context = self.current_repo
-        status_bar.update_status(self.connection_status)
+        try:
+            status_bar: StatusBar = self.query_one("#status-bar", StatusBar)
+            status_bar.update_namespace(self.current_namespace)
+            status_bar.context = self.current_repo
+            status_bar.update_status(self.connection_status)
+        except Exception:
+            # Status bar not mounted yet, skip update
+            pass
 
     def on_button_pressed(self, event) -> None:
         """Handle button presses for repo selection."""
