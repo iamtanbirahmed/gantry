@@ -382,16 +382,290 @@ class HelmScreen(Screen):
 
     BINDINGS = [
         ("tab", "switch_screen('cluster')", "Switch to Cluster View"),
-        ("q", "quit", "Quit"),
+        ("slash", "focus_search", "Search"),
+        ("r", "refresh_charts", "Refresh"),
+        ("q", "quit", "Quit Gantry"),
     ]
+
+    CSS = """
+    Screen {
+        layout: vertical;
+        background: $surface;
+        color: $text;
+    }
+
+    #header-container {
+        height: 3;
+        border: solid $accent;
+    }
+
+    #repo-label {
+        height: 1;
+        width: 100%;
+        content-align: left middle;
+    }
+
+    #repo-selector {
+        height: 1;
+        width: 100%;
+    }
+
+    #repo-selector Button {
+        margin-right: 1;
+    }
+
+    #body-container {
+        height: 1fr;
+    }
+
+    ResourceTable {
+        height: 1fr;
+        width: 100%;
+    }
+
+    SearchInput {
+        height: 1;
+        width: 100%;
+        display: none;
+    }
+
+    SearchInput.show {
+        display: block;
+    }
+
+    #detail-panel {
+        height: auto;
+        border: solid $accent;
+        display: none;
+        background: $boost;
+        color: $text;
+        padding: 1;
+    }
+
+    #detail-panel.show {
+        display: block;
+        height: auto;
+    }
+
+    StatusBar {
+        height: 1;
+        border: solid $accent;
+    }
+    """
+
+    current_repo = reactive("Select a repo")
+    connection_status = reactive("Loading repos...")
+    current_namespace = reactive("default")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._repos: List[Dict[str, Any]] = []
+        self._charts: List[Dict[str, Any]] = []
+        self._all_charts: List[Dict[str, Any]] = []
+        self._selected_repo: Optional[str] = None
+        self._selected_chart: Optional[str] = None
 
     def compose(self):
         """Compose the helm screen."""
-        yield Container(
-            Label("Helm View", id="helm-label"),
-            id="helm-container",
-        )
+        # Header with repo selector
+        with Vertical(id="header-container"):
+            yield Label("Repository:", id="repo-label")
+            with Horizontal(id="repo-selector"):
+                yield Button("Repos", id="btn-repos-list", variant="primary")
+
+        # Body with chart table and search
+        with Vertical(id="body-container"):
+            yield ResourceTable(id="chart-table")
+            yield SearchInput(id="search-input")
+
+        # Detail panel for deployment info
+        yield Label(id="detail-panel")
+
+        # Status bar
+        yield StatusBar(id="status-bar")
 
     def on_mount(self) -> None:
         """Initialize helm screen on mount."""
         self.title = "Gantry - Helm Orchestration"
+        self._load_repos()
+
+    def _load_repos(self) -> None:
+        """Load available Helm repositories."""
+        self._load_repos_worker()
+
+    @work(thread=True)
+    def _load_repos_worker(self) -> None:
+        """Worker to load repos without blocking UI."""
+        from gantry import helm
+
+        repos = helm.list_repos()
+
+        # Filter out error entries
+        repos = [r for r in repos if "error" not in r]
+
+        if repos:
+            self._repos = repos
+            self.connection_status = "Connected"
+            # Auto-select first repo
+            if repos:
+                self._selected_repo = repos[0].get("name")
+                self._load_charts(self._selected_repo)
+        else:
+            self._repos = []
+            self.connection_status = "No repos configured"
+
+        self._update_status_bar()
+
+    def _load_charts(self, repo: str) -> None:
+        """Load charts from a specific repository."""
+        self._load_charts_worker(repo)
+
+    @work(thread=True)
+    def _load_charts_worker(self, repo: str) -> None:
+        """Worker to load charts without blocking UI."""
+        from gantry import helm
+
+        # Search for all charts in the repo by using an empty query
+        charts = helm.search_charts("*", repo=repo)
+
+        # Filter out error entries
+        charts = [c for c in charts if "error" not in c]
+
+        self._all_charts = charts
+        self._display_charts(charts)
+
+        if charts:
+            self.current_repo = repo
+            self.connection_status = f"Loaded {len(charts)} charts from {repo}"
+        else:
+            self.current_repo = repo
+            self.connection_status = f"No charts found in {repo}"
+
+        self._update_status_bar()
+
+    def _display_charts(self, charts: List[Dict[str, Any]]) -> None:
+        """Display charts in the table."""
+        table: ResourceTable = self.query_one("#chart-table", ResourceTable)
+
+        columns = ["Chart", "Version", "App Version", "Description"]
+        keys = ["name", "version", "app_version", "description"]
+
+        table.populate_resources(charts, columns, keys)
+        self._charts = charts
+
+    def _update_status_bar(self) -> None:
+        """Update the status bar with current info."""
+        status_bar: StatusBar = self.query_one("#status-bar", StatusBar)
+        status_bar.update_namespace(self.current_namespace)
+        status_bar.context = self.current_repo
+        status_bar.update_status(self.connection_status)
+
+    def on_button_pressed(self, event) -> None:
+        """Handle button presses for repo selection."""
+        button_id = event.button.id
+        if button_id == "btn-repos-list":
+            # Show repo list in detail panel
+            self._show_repo_list()
+
+    def _show_repo_list(self) -> None:
+        """Show the list of available repos."""
+        if not self._repos:
+            detail = "No repositories configured.\n\nUse 'helm repo add' to add repositories."
+        else:
+            lines = ["=== Available Repositories ===\n"]
+            for repo in self._repos:
+                name = repo.get("name", "Unknown")
+                url = repo.get("url", "Unknown")
+                lines.append(f"{name}: {url}")
+            detail = "\n".join(lines)
+
+        self._display_detail_panel(detail)
+
+    def _display_detail_panel(self, content: str) -> None:
+        """Display content in the detail panel."""
+        try:
+            detail_panel = self.query_one("#detail-panel", Label)
+            detail_panel.update(content)
+            detail_panel.add_class("show")
+        except Exception:
+            pass
+
+    def action_focus_search(self) -> None:
+        """Focus on the search input."""
+        search_input: SearchInput = self.query_one("#search-input", SearchInput)
+        search_input.add_class("show")
+        search_input.focus()
+
+    def action_refresh_charts(self) -> None:
+        """Refresh the chart list."""
+        if self._selected_repo:
+            self._load_charts(self._selected_repo)
+
+    def action_switch_screen(self, screen: str = "cluster") -> None:
+        """Switch screens via action."""
+        self.app.action_switch_screen()
+
+    def on_search_input_search_changed(self, message: SearchInput.SearchChanged) -> None:
+        """Handle search input changes and filter the table."""
+        table: ResourceTable = self.query_one("#chart-table", ResourceTable)
+        table.filter_by_search(message.value)
+
+    def on_data_table_row_selected(self, message) -> None:
+        """Handle chart selection and trigger deploy flow."""
+        table: ResourceTable = self.query_one("#chart-table", ResourceTable)
+
+        if table.cursor_row is not None and 0 <= table.cursor_row < len(self._charts):
+            chart = self._charts[table.cursor_row]
+            self._selected_chart = chart.get("name", "Unknown")
+            self._show_deploy_dialog(self._selected_chart)
+
+    def _show_deploy_dialog(self, chart_name: str) -> None:
+        """Show deployment confirmation dialog."""
+        detail = f"=== Deploy Chart ===\n\nChart: {chart_name}\nNamespace: {self.current_namespace}\n\n"
+        detail += "Press Enter to deploy or press any other key to cancel."
+
+        self._display_detail_panel(detail)
+        self.connection_status = f"Selected chart: {chart_name}"
+        self._update_status_bar()
+
+    def action_execute_action(self, action_name: str = "deploy") -> None:
+        """Execute an action (for deployment confirmation)."""
+        if action_name == "deploy" and self._selected_chart:
+            self._deploy_chart(self._selected_chart)
+
+    def _deploy_chart(self, chart_name: str) -> None:
+        """Deploy a Helm chart."""
+        # Extract chart name parts
+        chart_parts = chart_name.split("/")
+        if len(chart_parts) == 2:
+            repo, chart = chart_parts
+        else:
+            chart = chart_parts[-1]
+            repo = None
+
+        # Generate release name from chart name
+        release_name = chart.replace("/", "-").replace("_", "-").lower()
+
+        self._deploy_chart_worker(release_name, chart_name)
+
+    @work(thread=True)
+    def _deploy_chart_worker(self, release_name: str, chart_name: str) -> None:
+        """Worker to install chart without blocking UI."""
+        from gantry import helm
+
+        result = helm.install_chart(
+            release_name,
+            chart_name,
+            namespace=self.current_namespace
+        )
+
+        if result.get("success"):
+            detail = f"=== Deployment Successful ===\n\n{result.get('message', 'Chart deployed')}"
+            self.connection_status = f"Deployed: {release_name}"
+        else:
+            error_msg = result.get("error", "Unknown error")
+            detail = f"=== Deployment Failed ===\n\nError: {error_msg}"
+            self.connection_status = f"Error: {error_msg[:50]}"
+
+        self._display_detail_panel(detail)
+        self._update_status_bar()
