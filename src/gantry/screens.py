@@ -3,12 +3,13 @@
 from typing import Any, Dict, List, Optional
 from textual.screen import Screen
 from textual.containers import Container, Vertical, Horizontal
-from textual.widgets import Label, Static, Button, OptionList, Input
+from textual.widgets import Label, Static, Button, OptionList, Input, TextArea
 from textual.widget import Widget
 from textual.binding import Binding
 from textual.message import Message
 from textual import work
 from textual.reactive import reactive
+import json
 
 from gantry import k8s
 from gantry.widgets import ResourceTable, SearchInput, StatusBar
@@ -68,6 +69,20 @@ class ClusterScreen(Screen):
         display: block;
     }
 
+    #detail-panel {
+        height: auto;
+        border: solid $accent;
+        display: none;
+        background: $boost;
+        color: $text;
+        padding: 1;
+    }
+
+    #detail-panel.show {
+        display: block;
+        height: auto;
+    }
+
     StatusBar {
         height: 1;
         border: solid $accent;
@@ -105,6 +120,9 @@ class ClusterScreen(Screen):
         with Vertical(id="body-container"):
             yield ResourceTable(id="resource-table")
             yield SearchInput(id="search-input")
+
+        # Detail panel for descriptions and logs
+        yield Label(id="detail-panel")
 
         # Status bar
         yield StatusBar(id="status-bar")
@@ -195,6 +213,8 @@ class ClusterScreen(Screen):
             return
 
         table.populate_resources(resources, columns, keys)
+        # Store resource data for actions like describe and logs
+        self._resource_data = resources
 
     def on_button_pressed(self, event) -> None:
         """Handle button presses for resource type selection."""
@@ -260,9 +280,59 @@ class ClusterScreen(Screen):
             resource_type, resource_name, namespace=self.current_namespace
         )
         if result:
-            # For now, just update status to show description was fetched
+            # Format the result as a readable string
+            description = self._format_resource_description(resource_type, result)
+            self._display_detail_panel(description)
             self.connection_status = f"Described {resource_name}"
-            self._update_status_bar()
+        else:
+            self.connection_status = f"Failed to describe {resource_name}"
+        self._update_status_bar()
+
+    def _format_resource_description(self, resource_type: str, result: Dict[str, Any]) -> str:
+        """Format resource description for display."""
+        if "error" in result:
+            return f"Error: {result.get('error', 'Unknown error')}"
+
+        lines = [f"=== {resource_type}: {result.get('name', 'Unknown')} ==="]
+        lines.append(f"Namespace: {result.get('namespace', 'N/A')}")
+
+        # Add resource-type-specific info
+        if resource_type == "Pod":
+            lines.append(f"Status: {result.get('status', 'N/A')}")
+            if "spec" in result and "containers" in result["spec"]:
+                lines.append("Containers:")
+                for container in result["spec"]["containers"]:
+                    lines.append(f"  - {container.get('name', 'N/A')}: {container.get('image', 'N/A')}")
+
+        elif resource_type == "Service":
+            lines.append(f"Type: {result.get('type', 'N/A')}")
+            lines.append(f"Cluster IP: {result.get('cluster_ip', 'N/A')}")
+            if "ports" in result:
+                lines.append("Ports:")
+                for port in result["ports"]:
+                    lines.append(f"  - {port.get('port', 'N/A')}/{port.get('protocol', 'N/A')}")
+
+        elif resource_type == "Deployment":
+            lines.append(f"Replicas: {result.get('replicas', 0)}")
+            if "status" in result:
+                status = result["status"]
+                lines.append(f"Ready: {status.get('ready_replicas', 0)}/{result.get('replicas', 0)}")
+
+        elif resource_type == "ConfigMap":
+            if "data" in result:
+                lines.append(f"Keys: {', '.join(result['data'].keys())}")
+
+        return "\n".join(lines)
+
+    def _display_detail_panel(self, content: str) -> None:
+        """Display content in the detail panel."""
+        try:
+            detail_panel = self.query_one("#detail-panel", Label)
+            detail_panel.update(content)
+            detail_panel.add_class("show")
+        except Exception:
+            # If detail panel is not available, just update status bar
+            pass
 
     def action_show_logs(self) -> None:
         """Show logs for the selected pod."""
@@ -279,8 +349,19 @@ class ClusterScreen(Screen):
         if 0 <= row_index < len(self._resource_data):
             pod = self._resource_data[row_index]
             pod_name = pod.get("name", "Unknown")
+            self._show_logs_worker(pod_name)
+
+    @work(thread=True)
+    def _show_logs_worker(self, pod_name: str) -> None:
+        """Worker to fetch and display pod logs."""
+        logs = k8s.get_pod_logs(pod_name, namespace=self.current_namespace)
+        if logs:
+            log_display = f"=== Logs for {pod_name} ===\n\n{logs}"
+            self._display_detail_panel(log_display)
             self.connection_status = f"Logs for {pod_name}"
-            self._update_status_bar()
+        else:
+            self.connection_status = f"Failed to retrieve logs for {pod_name}"
+        self._update_status_bar()
 
     def action_refresh_resources(self) -> None:
         """Refresh the resource list."""
@@ -289,6 +370,11 @@ class ClusterScreen(Screen):
     def watch_current_resource_type(self, new_type: str) -> None:
         """React to resource type changes."""
         self._refresh_resources()
+
+    def on_search_input_search_changed(self, message: SearchInput.SearchChanged) -> None:
+        """Handle search input changes and filter the table."""
+        table: ResourceTable = self.query_one("#resource-table", ResourceTable)
+        table.filter_by_search(message.value)
 
 
 class HelmScreen(Screen):

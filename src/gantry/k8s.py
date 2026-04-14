@@ -356,3 +356,37 @@ def describe_resource(
             "error": str(e),
             "type": "describe_resource_error",
         }
+
+
+def get_pod_logs(
+    pod_name: str,
+    namespace: str = "default",
+    tail_lines: int = 50,
+) -> Optional[str]:
+    """
+    Get logs from a pod.
+
+    Args:
+        pod_name: Name of the pod.
+        namespace: Kubernetes namespace (default: "default").
+        tail_lines: Number of lines to retrieve (default: 50).
+
+    Returns a string with the pod logs, or None if not found.
+    """
+    try:
+        config.load_kube_config()
+        v1 = client.CoreV1Api()
+        logs = v1.read_namespaced_pod_log(
+            name=pod_name,
+            namespace=namespace,
+            tail_lines=tail_lines,
+        )
+        return logs
+    except config.config_exception.ConfigException:
+        return None
+    except ApiException as e:
+        if e.status == 404:
+            return None
+        return f"API Error: {str(e)}"
+    except Exception as e:
+        return f"Error: {str(e)}"
