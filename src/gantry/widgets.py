@@ -41,6 +41,7 @@ class ResourceTable(DataTable):
         super().__init__(*args, **kwargs)
         self._all_rows: Dict[str, List[Any]] = {}
         self._search_term: str = ""
+        self._columns: List[str] = []
 
     def populate_resources(
         self,
@@ -58,6 +59,7 @@ class ResourceTable(DataTable):
         """
         self.clear()
         self._all_rows.clear()
+        self._columns = columns
 
         # Add columns
         for col in columns:
@@ -87,6 +89,10 @@ class ResourceTable(DataTable):
     def _apply_filter(self, search_term: str) -> None:
         """Apply the search filter to the table."""
         self.clear()
+
+        # Re-add columns after clearing
+        for col in self._columns:
+            self.add_column(col)
 
         if not search_term:
             # Show all rows
