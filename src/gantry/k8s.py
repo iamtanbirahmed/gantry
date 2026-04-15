@@ -72,14 +72,17 @@ def switch_context(context_name: str) -> Dict[str, Any]:
         }
 
 
-def list_namespaces() -> List[str]:
+def list_namespaces(context_name: Optional[str] = None) -> List[str]:
     """
     List all available Kubernetes namespaces.
+
+    Args:
+        context_name: Optional context name to load kubeconfig for. If None, uses active context.
 
     Returns a list of namespace names, or an empty list if unable to fetch.
     """
     try:
-        config.load_kube_config()
+        config.load_kube_config(context=context_name)
         v1 = client.CoreV1Api()
         namespaces = v1.list_namespace()
         return [ns.metadata.name for ns in namespaces.items]

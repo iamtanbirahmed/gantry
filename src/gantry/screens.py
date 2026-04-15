@@ -106,10 +106,11 @@ class ContextPickerModal(ModalScreen):
     def on_mount(self) -> None:
         """Focus and highlight current selections."""
         try:
-            # Load available namespaces
-            self._load_namespaces()
             ctx_list = self.query_one("#context-list", OptionList)
             ns_list = self.query_one("#namespace-list", OptionList)
+
+            # Load namespaces asynchronously for the current context
+            self._load_namespaces_worker(self.current_context)
 
             # Find and highlight current selections
             for i, opt in enumerate(ctx_list.options):
@@ -126,9 +127,14 @@ class ContextPickerModal(ModalScreen):
         except Exception:
             pass
 
-    def _load_namespaces(self) -> None:
-        """Load available namespaces from the cluster."""
-        namespaces = k8s.list_namespaces()
+    @work(thread=True)
+    def _load_namespaces_worker(self, context_name: str) -> None:
+        """Load available namespaces from the cluster in a background thread."""
+        namespaces = k8s.list_namespaces(context_name=context_name)
+        self.app.call_from_thread(self._set_namespaces, namespaces)
+
+    def _set_namespaces(self, namespaces: List[str]) -> None:
+        """Update the namespace list with loaded values."""
         # Start with "all" option, then add actual namespaces
         self.namespaces = ["all"] + sorted(namespaces)
 
@@ -145,6 +151,8 @@ class ContextPickerModal(ModalScreen):
         """Handle option selection."""
         if event.option_list.id == "context-list":
             self.selected_context = event.option_list.options[event.cursor_position][1]
+            # Reload namespaces for the newly selected context
+            self._load_namespaces_worker(self.selected_context)
         elif event.option_list.id == "namespace-list":
             self.selected_namespace = event.option_list.options[event.cursor_position][1]
 
@@ -350,19 +358,23 @@ class ClusterScreen(Screen):
 
             # Store and display
             self._all_resources[resource_type] = resources
-            self.app.call_from_thread(self._display_resources, resource_type, resources)
+            self.app.call_from_thread(self._display_resources, resource_type, namespace, resources)
             self.connection_status = "Connected"
         except Exception as e:
             self.connection_status = f"Error: {str(e)}"
         finally:
             self.app.call_from_thread(self._update_status_bar)
 
-    def _display_resources(self, resource_type: str, resources: List[Dict[str, Any]]) -> None:
+    def _display_resources(self, resource_type: str, namespace: str, resources: List[Dict[str, Any]]) -> None:
         """Display resources in the table."""
+        # Ignore stale fetch results - only render if this is the current request
+        if resource_type != self.current_resource_type or namespace != self.current_namespace:
+            return
+
         table: ResourceTable = self.query_one("#resource-table", ResourceTable)
 
         # Check if we're in all-namespace mode
-        is_all_namespaces = self.current_namespace == "all"
+        is_all_namespaces = namespace == "all"
 
         if resource_type == "Pods":
             if is_all_namespaces:
@@ -449,18 +461,20 @@ class ClusterScreen(Screen):
             resource = self._resource_data[row_index]
             resource_name = resource.get("name", "Unknown")
             resource_type = self.current_resource_type.rstrip("s")  # Remove trailing 's'
+            # Use row's namespace if in all-namespace mode, otherwise use current namespace
+            namespace = resource.get("namespace", self.current_namespace) if self.current_namespace == "all" else self.current_namespace
 
-            self._show_describe_dialog(resource_type, resource_name)
+            self._show_describe_dialog(resource_type, resource_name, namespace)
 
-    def _show_describe_dialog(self, resource_type: str, resource_name: str) -> None:
+    def _show_describe_dialog(self, resource_type: str, resource_name: str, namespace: str) -> None:
         """Show a dialog with resource details."""
-        self._describe_resource_worker(resource_type, resource_name)
+        self._describe_resource_worker(resource_type, resource_name, namespace)
 
     @work(thread=True)
-    def _describe_resource_worker(self, resource_type: str, resource_name: str) -> None:
+    def _describe_resource_worker(self, resource_type: str, resource_name: str, namespace: str) -> None:
         """Worker to fetch resource description."""
         result = k8s.describe_resource(
-            resource_type, resource_name, namespace=self.current_namespace
+            resource_type, resource_name, namespace=namespace
         )
         if result:
             # Format the result as a readable string
@@ -532,12 +546,14 @@ class ClusterScreen(Screen):
         if 0 <= row_index < len(self._resource_data):
             pod = self._resource_data[row_index]
             pod_name = pod.get("name", "Unknown")
-            self._show_logs_worker(pod_name)
+            # Use row's namespace if in all-namespace mode, otherwise use current namespace
+            namespace = pod.get("namespace", self.current_namespace) if self.current_namespace == "all" else self.current_namespace
+            self._show_logs_worker(pod_name, namespace)
 
     @work(thread=True)
-    def _show_logs_worker(self, pod_name: str) -> None:
+    def _show_logs_worker(self, pod_name: str, namespace: str) -> None:
         """Worker to fetch and display pod logs."""
-        logs = k8s.get_pod_logs(pod_name, namespace=self.current_namespace)
+        logs = k8s.get_pod_logs(pod_name, namespace=namespace)
         if logs:
             log_display = f"=== Logs for {pod_name} ===\n\n{logs}"
             self.app.call_from_thread(self._display_detail_panel, log_display)
