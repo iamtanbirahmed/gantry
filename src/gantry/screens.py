@@ -77,7 +77,7 @@ class ContextPickerModal(ModalScreen):
         self.contexts = contexts
         self.current_context = current_context
         self.current_namespace = current_namespace
-        self.namespaces = ["default", "kube-system", "kube-public"]  # Common namespaces
+        self.namespaces = ["all"]  # Start with "all" option
         self.selected_context = current_context
         self.selected_namespace = current_namespace
 
@@ -106,6 +106,8 @@ class ContextPickerModal(ModalScreen):
     def on_mount(self) -> None:
         """Focus and highlight current selections."""
         try:
+            # Load available namespaces
+            self._load_namespaces()
             ctx_list = self.query_one("#context-list", OptionList)
             ns_list = self.query_one("#namespace-list", OptionList)
 
@@ -121,6 +123,21 @@ class ContextPickerModal(ModalScreen):
                     break
 
             ctx_list.focus()
+        except Exception:
+            pass
+
+    def _load_namespaces(self) -> None:
+        """Load available namespaces from the cluster."""
+        namespaces = k8s.list_namespaces()
+        # Start with "all" option, then add actual namespaces
+        self.namespaces = ["all"] + sorted(namespaces)
+
+        # Update the namespace list options
+        try:
+            ns_list = self.query_one("#namespace-list", OptionList)
+            ns_list.clear_options()
+            for ns in self.namespaces:
+                ns_list.add_option(ns, ns)
         except Exception:
             pass
 
@@ -276,8 +293,6 @@ class ClusterScreen(Screen):
         self.title = "Gantry - Cluster Management"
         # Load initial context and namespace
         self._load_context_info()
-        # Load initial resources
-        self._refresh_resources()
 
     def _load_context_info(self) -> None:
         """Load current Kubernetes context and namespace."""
@@ -296,7 +311,8 @@ class ClusterScreen(Screen):
             self.connection_status = "Connected"
         else:
             self.connection_status = "Error"
-        self._update_status_bar()
+        self.app.call_from_thread(self._update_status_bar)
+        self.app.call_from_thread(self._refresh_resources)
 
     def _update_status_bar(self) -> None:
         """Update the status bar with current info."""
@@ -334,29 +350,48 @@ class ClusterScreen(Screen):
 
             # Store and display
             self._all_resources[resource_type] = resources
-            self._display_resources(resource_type, resources)
+            self.app.call_from_thread(self._display_resources, resource_type, resources)
             self.connection_status = "Connected"
         except Exception as e:
             self.connection_status = f"Error: {str(e)}"
         finally:
-            self._update_status_bar()
+            self.app.call_from_thread(self._update_status_bar)
 
     def _display_resources(self, resource_type: str, resources: List[Dict[str, Any]]) -> None:
         """Display resources in the table."""
         table: ResourceTable = self.query_one("#resource-table", ResourceTable)
 
+        # Check if we're in all-namespace mode
+        is_all_namespaces = self.current_namespace == "all"
+
         if resource_type == "Pods":
-            columns = ["Name", "Status", "Ready", "Restarts"]
-            keys = ["name", "status", "ready", "restarts"]
+            if is_all_namespaces:
+                columns = ["Name", "Namespace", "Status", "Ready", "Restarts"]
+                keys = ["name", "namespace", "status", "ready", "restarts"]
+            else:
+                columns = ["Name", "Status", "Ready", "Restarts"]
+                keys = ["name", "status", "ready", "restarts"]
         elif resource_type == "Services":
-            columns = ["Name", "Type", "Cluster IP"]
-            keys = ["name", "type", "cluster_ip"]
+            if is_all_namespaces:
+                columns = ["Name", "Namespace", "Type", "Cluster IP"]
+                keys = ["name", "namespace", "type", "cluster_ip"]
+            else:
+                columns = ["Name", "Type", "Cluster IP"]
+                keys = ["name", "type", "cluster_ip"]
         elif resource_type == "Deployments":
-            columns = ["Name", "Replicas", "Ready", "Available"]
-            keys = ["name", "replicas", "ready_replicas", "available_replicas"]
+            if is_all_namespaces:
+                columns = ["Name", "Namespace", "Replicas", "Ready", "Available"]
+                keys = ["name", "namespace", "replicas", "ready_replicas", "available_replicas"]
+            else:
+                columns = ["Name", "Replicas", "Ready", "Available"]
+                keys = ["name", "replicas", "ready_replicas", "available_replicas"]
         elif resource_type == "ConfigMaps":
-            columns = ["Name", "Keys"]
-            keys = ["name", "key_count"]
+            if is_all_namespaces:
+                columns = ["Name", "Namespace", "Keys"]
+                keys = ["name", "namespace", "key_count"]
+            else:
+                columns = ["Name", "Keys"]
+                keys = ["name", "key_count"]
         else:
             return
 
@@ -430,11 +465,11 @@ class ClusterScreen(Screen):
         if result:
             # Format the result as a readable string
             description = self._format_resource_description(resource_type, result)
-            self._display_detail_panel(description)
+            self.app.call_from_thread(self._display_detail_panel, description)
             self.connection_status = f"Described {resource_name}"
         else:
             self.connection_status = f"Failed to describe {resource_name}"
-        self._update_status_bar()
+        self.app.call_from_thread(self._update_status_bar)
 
     def _format_resource_description(self, resource_type: str, result: Dict[str, Any]) -> str:
         """Format resource description for display."""
@@ -505,11 +540,11 @@ class ClusterScreen(Screen):
         logs = k8s.get_pod_logs(pod_name, namespace=self.current_namespace)
         if logs:
             log_display = f"=== Logs for {pod_name} ===\n\n{logs}"
-            self._display_detail_panel(log_display)
+            self.app.call_from_thread(self._display_detail_panel, log_display)
             self.connection_status = f"Logs for {pod_name}"
         else:
             self.connection_status = f"Failed to retrieve logs for {pod_name}"
-        self._update_status_bar()
+        self.app.call_from_thread(self._update_status_bar)
 
     def action_refresh_resources(self) -> None:
         """Refresh the resource list."""
@@ -708,7 +743,7 @@ class HelmScreen(Screen):
             self._repos = []
             self.connection_status = "No repos configured"
 
-        self._update_status_bar()
+        self.app.call_from_thread(self._update_status_bar)
 
     def _load_charts(self, repo: str) -> None:
         """Load charts from a specific repository."""
@@ -726,7 +761,7 @@ class HelmScreen(Screen):
         charts = [c for c in charts if "error" not in c]
 
         self._all_charts = charts
-        self._display_charts(charts)
+        self.app.call_from_thread(self._display_charts, charts)
 
         if charts:
             self.current_repo = repo
@@ -735,7 +770,7 @@ class HelmScreen(Screen):
             self.current_repo = repo
             self.connection_status = f"No charts found in {repo}"
 
-        self._update_status_bar()
+        self.app.call_from_thread(self._update_status_bar)
 
     def _display_charts(self, charts: List[Dict[str, Any]]) -> None:
         """Display charts in the table."""

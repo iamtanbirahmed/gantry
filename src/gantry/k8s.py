@@ -72,19 +72,40 @@ def switch_context(context_name: str) -> Dict[str, Any]:
         }
 
 
+def list_namespaces() -> List[str]:
+    """
+    List all available Kubernetes namespaces.
+
+    Returns a list of namespace names, or an empty list if unable to fetch.
+    """
+    try:
+        config.load_kube_config()
+        v1 = client.CoreV1Api()
+        namespaces = v1.list_namespace()
+        return [ns.metadata.name for ns in namespaces.items]
+    except (config.config_exception.ConfigException, FileNotFoundError):
+        return []
+    except Exception:
+        return []
+
+
 def list_pods(namespace: str = "default") -> List[Dict[str, Any]]:
     """
     List all pods in a given namespace.
 
     Args:
-        namespace: Kubernetes namespace (default: "default").
+        namespace: Kubernetes namespace (default: "default"). Use "all" for all namespaces.
 
     Returns a list of pod dictionaries with name, status, ready replicas, etc.
     """
     try:
         config.load_kube_config()
         v1 = client.CoreV1Api()
-        pods = v1.list_namespaced_pod(namespace=namespace)
+
+        if namespace == "all":
+            pods = v1.list_pod_for_all_namespaces()
+        else:
+            pods = v1.list_namespaced_pod(namespace=namespace)
 
         result = []
         for pod in pods.items:
@@ -123,14 +144,18 @@ def list_services(namespace: str = "default") -> List[Dict[str, Any]]:
     List all services in a given namespace.
 
     Args:
-        namespace: Kubernetes namespace (default: "default").
+        namespace: Kubernetes namespace (default: "default"). Use "all" for all namespaces.
 
     Returns a list of service dictionaries with name, type, cluster IP, ports, etc.
     """
     try:
         config.load_kube_config()
         v1 = client.CoreV1Api()
-        services = v1.list_namespaced_service(namespace=namespace)
+
+        if namespace == "all":
+            services = v1.list_service_for_all_namespaces()
+        else:
+            services = v1.list_namespaced_service(namespace=namespace)
 
         result = []
         for svc in services.items:
@@ -168,14 +193,18 @@ def list_deployments(namespace: str = "default") -> List[Dict[str, Any]]:
     List all deployments in a given namespace.
 
     Args:
-        namespace: Kubernetes namespace (default: "default").
+        namespace: Kubernetes namespace (default: "default"). Use "all" for all namespaces.
 
     Returns a list of deployment dictionaries with name, replicas, status, etc.
     """
     try:
         config.load_kube_config()
         apps_v1 = client.AppsV1Api()
-        deployments = apps_v1.list_namespaced_deployment(namespace=namespace)
+
+        if namespace == "all":
+            deployments = apps_v1.list_deployment_for_all_namespaces()
+        else:
+            deployments = apps_v1.list_namespaced_deployment(namespace=namespace)
 
         result = []
         for deploy in deployments.items:
@@ -204,14 +233,18 @@ def list_configmaps(namespace: str = "default") -> List[Dict[str, Any]]:
     List all configmaps in a given namespace.
 
     Args:
-        namespace: Kubernetes namespace (default: "default").
+        namespace: Kubernetes namespace (default: "default"). Use "all" for all namespaces.
 
     Returns a list of configmap dictionaries with name, data keys, etc.
     """
     try:
         config.load_kube_config()
         v1 = client.CoreV1Api()
-        configmaps = v1.list_namespaced_config_map(namespace=namespace)
+
+        if namespace == "all":
+            configmaps = v1.list_config_map_for_all_namespaces()
+        else:
+            configmaps = v1.list_namespaced_config_map(namespace=namespace)
 
         result = []
         for cm in configmaps.items:
