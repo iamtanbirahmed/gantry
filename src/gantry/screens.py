@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 from textual.screen import Screen, ModalScreen
 from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
 from textual.widgets import Label, Static, Button, OptionList, Input, TextArea
+from textual.widgets._option_list import Option
 from textual.widget import Widget
 from textual.binding import Binding
 from textual.message import Message
@@ -89,17 +90,15 @@ class ContextPickerModal(ModalScreen):
             with Vertical(id="contexts-section"):
                 yield Label("Contexts:", id="contexts-label")
                 options = [
-                    (ctx.get("name", "Unknown"), ctx.get("name", "Unknown"))
+                    Option(ctx.get("name", "Unknown"), id=ctx.get("name", "Unknown"))
                     for ctx in self.contexts
                 ]
-                yield OptionList(id="context-list", *options)
+                yield OptionList(*options, id="context-list")
 
             with Vertical(id="namespaces-section"):
                 yield Label("Namespaces:", id="namespaces-label")
-                ns_options = [
-                    (ns, ns) for ns in self.namespaces
-                ]
-                yield OptionList(id="namespace-list", *ns_options)
+                ns_options = [Option(ns, id=ns) for ns in self.namespaces]
+                yield OptionList(*ns_options, id="namespace-list")
 
             yield Label("Press Enter to select or Esc to cancel", id="picker-footer")
 
@@ -113,13 +112,13 @@ class ContextPickerModal(ModalScreen):
             self._load_namespaces_worker(self.current_context)
 
             # Find and highlight current selections
-            for i, opt in enumerate(ctx_list.options):
-                if opt[1] == self.current_context:
+            for i, opt in enumerate(ctx_list._options):
+                if opt.id == self.current_context:
                     ctx_list.highlighted = i
                     break
 
-            for i, opt in enumerate(ns_list.options):
-                if opt[1] == self.current_namespace:
+            for i, opt in enumerate(ns_list._options):
+                if opt.id == self.current_namespace:
                     ns_list.highlighted = i
                     break
 
@@ -143,18 +142,18 @@ class ContextPickerModal(ModalScreen):
             ns_list = self.query_one("#namespace-list", OptionList)
             ns_list.clear_options()
             for ns in self.namespaces:
-                ns_list.add_option(ns, ns)
+                ns_list.add_option(Option(ns, id=ns))
         except Exception:
             pass
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         """Handle option selection."""
         if event.option_list.id == "context-list":
-            self.selected_context = event.option_list.options[event.cursor_position][1]
+            self.selected_context = event.option_id
             # Reload namespaces for the newly selected context
             self._load_namespaces_worker(self.selected_context)
         elif event.option_list.id == "namespace-list":
-            self.selected_namespace = event.option_list.options[event.cursor_position][1]
+            self.selected_namespace = event.option_id
 
     def action_submit(self) -> None:
         """Submit the selected context and namespace."""
@@ -169,7 +168,7 @@ class ClusterScreen(Screen):
     """Screen for Kubernetes cluster exploration and management."""
 
     BINDINGS = [
-        ("tab", "switch_screen('helm')", "Switch to Helm View"),
+        ("tab", "app.action_switch_screen", "Switch to Helm View"),
         ("slash", "focus_search", "Search"),
         ("c", "show_context_picker", "Pick Context"),
         ("d", "describe_resource", "Describe"),
@@ -593,6 +592,7 @@ class ClusterScreen(Screen):
                     self.connection_status = f"Error: {switch_result.get('error', 'Failed to switch context')}"
             else:
                 self.current_namespace = new_namespace
+                self._refresh_resources()
 
             self._update_status_bar()
 
@@ -610,7 +610,7 @@ class HelmScreen(Screen):
     """Screen for Helm chart exploration and deployment."""
 
     BINDINGS = [
-        ("tab", "switch_screen('cluster')", "Switch to Cluster View"),
+        ("tab", "app.action_switch_screen", "Switch to Cluster View"),
         ("slash", "focus_search", "Search"),
         ("c", "show_context_picker", "Pick Context"),
         ("enter", "execute_action('deploy')", "Deploy Chart"),

@@ -57,7 +57,7 @@ class ResourceTable(DataTable):
             columns: List of column headers to display.
             column_keys: List of keys to extract from each resource dict.
         """
-        self.clear()
+        self.clear(columns=True)
         self._all_rows.clear()
         self._columns = columns
 
@@ -88,11 +88,7 @@ class ResourceTable(DataTable):
 
     def _apply_filter(self, search_term: str) -> None:
         """Apply the search filter to the table."""
-        self.clear()
-
-        # Re-add columns after clearing
-        for col in self._columns:
-            self.add_column(col)
+        self.clear()  # Keeps columns; only clears rows
 
         if not search_term:
             # Show all rows
