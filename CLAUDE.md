@@ -78,7 +78,8 @@ src/gantry/
 ├── screens.py            # ClusterScreen, HelmScreen, ContextPickerModal
 ├── widgets.py            # ResourceTable, SearchInput, StatusBar
 ├── k8s.py                # Kubernetes API wrapper (list resources, switch contexts)
-└── helm.py               # Helm CLI wrapper (list repos, search/deploy charts)
+├── helm.py               # Helm CLI wrapper (list repos, search/deploy charts)
+└── state.py              # State persistence (saves/loads context & namespace)
 
 tests/
 ├── test_app.py           # App initialization, screen switching, keybindings
@@ -126,7 +127,7 @@ plans/                     # Implementation plans and design decisions
 | `c` | Open context/namespace picker modal |
 | `/` | Search/filter resources or charts |
 | `d` | Describe selected resource (Cluster view) |
-| `L` | View pod logs (pods only) |
+| `l` | View pod logs (pods only) |
 | `r` | Refresh current view |
 | `Enter` | Deploy selected Helm chart |
 | `Escape` | Close dialogs/modals |

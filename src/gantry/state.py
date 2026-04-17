@@ -20,7 +20,7 @@ def load_state() -> dict:
             data = json.loads(_STATE_FILE.read_text())
             if isinstance(data, dict):
                 return data
-    except Exception as e:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
         logger.debug(f"Could not load state: {e}")
     return {}
 
@@ -37,5 +37,5 @@ def save_state(context: str, namespace: str) -> None:
         _STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
         _STATE_FILE.write_text(json.dumps({"context": context, "namespace": namespace}))
         logger.debug(f"State saved: context={context}, namespace={namespace}")
-    except Exception as e:
+    except (OSError, TypeError) as e:
         logger.debug(f"Could not save state: {e}")

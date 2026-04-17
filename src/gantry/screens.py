@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 from textual.screen import Screen, ModalScreen
 from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
 from textual.widgets import Label, Static, Button, OptionList, Input, TextArea
-from textual.widgets._option_list import Option
+from textual.widgets.option_list import Option
 from textual.widget import Widget
 from textual.binding import Binding
 from textual.message import Message
@@ -114,18 +114,14 @@ class ContextPickerModal(ModalScreen):
             # Load namespaces asynchronously for the current context
             self._load_namespaces_worker(self.current_context)
 
-            # Find and highlight current selections
+            # Find and highlight current context
             for i in range(ctx_list.option_count):
                 opt = ctx_list.get_option_at_index(i)
                 if opt.id == self.current_context:
                     ctx_list.highlighted = i
                     break
 
-            for i in range(ns_list.option_count):
-                opt = ns_list.get_option_at_index(i)
-                if opt.id == self.current_namespace:
-                    ns_list.highlighted = i
-                    break
+            # Namespace highlight will be applied by _set_namespaces after loading
 
             ctx_list.focus()
         except Exception:
@@ -148,6 +144,12 @@ class ContextPickerModal(ModalScreen):
             ns_list.clear_options()
             for ns in self.namespaces:
                 ns_list.add_option(Option(ns, id=ns))
+
+            # Highlight the current namespace after populating the list
+            for i in range(ns_list.option_count):
+                if ns_list.get_option_at_index(i).id == self.current_namespace:
+                    ns_list.highlighted = i
+                    break
         except Exception:
             pass
 
@@ -289,6 +291,7 @@ class ClusterScreen(Screen):
             "Deployments": [],
             "ConfigMaps": [],
         }
+        self._fetch_id: int = 0
 
     def compose(self):
         """Compose the cluster screen."""
@@ -376,14 +379,16 @@ class ClusterScreen(Screen):
 
     def _refresh_resources(self) -> None:
         """Refresh the resource list based on current type."""
+        self._fetch_id += 1
+        fetch_id = self._fetch_id
         resource_type = self.current_resource_type
         namespace = self.current_namespace
-        self._fetch_resources_worker(resource_type, namespace)
+        self._fetch_resources_worker(fetch_id, resource_type, namespace)
 
     @work(thread=True)
-    def _fetch_resources_worker(self, resource_type: str, namespace: str) -> None:
+    def _fetch_resources_worker(self, fetch_id: int, resource_type: str, namespace: str) -> None:
         """Worker to fetch resources without blocking UI."""
-        logger.debug(f"_fetch_resources_worker started: resource_type={resource_type}, namespace={namespace}")
+        logger.debug(f"_fetch_resources_worker started: fetch_id={fetch_id}, resource_type={resource_type}, namespace={namespace}")
         resources = []
         status = "Connected"
         try:
@@ -402,21 +407,25 @@ class ClusterScreen(Screen):
             # Store and display
             self._all_resources[resource_type] = resources
             logger.debug(f"_fetch_resources_worker completed: {len(resources)} {resource_type} fetched")
-            self.app.call_from_thread(self._display_resources, resource_type, namespace, resources)
+            self.app.call_from_thread(self._display_resources, fetch_id, resource_type, namespace, resources)
         except Exception as e:
             logger.error(f"Error in _fetch_resources_worker: {e}", exc_info=True)
             status = f"Error: {str(e)}"
         finally:
-            self.app.call_from_thread(self._apply_fetch_status, status)
+            self.app.call_from_thread(self._apply_fetch_status, fetch_id, status)
 
-    def _apply_fetch_status(self, status: str) -> None:
+    def _apply_fetch_status(self, fetch_id: int, status: str) -> None:
         """Apply fetch status on main thread."""
+        if fetch_id != self._fetch_id:
+            return
         self.connection_status = status
         self._update_status_bar()
 
-    def _display_resources(self, resource_type: str, namespace: str, resources: List[Dict[str, Any]]) -> None:
+    def _display_resources(self, fetch_id: int, resource_type: str, namespace: str, resources: List[Dict[str, Any]]) -> None:
         """Display resources in the table."""
         # Ignore stale fetch results - only render if this is the current request
+        if fetch_id != self._fetch_id:
+            return
         if resource_type != self.current_resource_type or namespace != self.current_namespace:
             return
 
@@ -777,6 +786,7 @@ class HelmScreen(Screen):
     """
 
     current_repo = reactive("Select a repo")
+    current_context = reactive("")
     connection_status = reactive("Loading repos...")
     current_namespace = reactive("default")
 
@@ -956,6 +966,7 @@ class HelmScreen(Screen):
         current_context = next(
             (ctx["name"] for ctx in contexts if ctx.get("current")), ""
         )
+        self.current_context = current_context
         modal = ContextPickerModal(contexts, current_context, self.current_namespace)
         self.app.push_screen(modal, callback=self._on_context_picker_dismiss)
 
@@ -963,10 +974,33 @@ class HelmScreen(Screen):
         """Handle context picker result."""
         if result:
             new_context, new_namespace = result
-            # Update namespace and refresh
+            if new_context != self.current_context:
+                self._switch_context_worker(new_context, new_namespace)
+            else:
+                # Only namespace changed
+                self.current_namespace = new_namespace
+                state.save_state(self.current_context, new_namespace)
+                self.connection_status = f"Switched namespace to '{new_namespace}'"
+                self._update_status_bar()
+
+    @work(thread=True)
+    def _switch_context_worker(self, new_context: str, new_namespace: str) -> None:
+        """Switch context in background thread."""
+        switch_result = k8s.switch_context(new_context)
+        self.app.call_from_thread(
+            self._apply_context_switch, new_context, new_namespace, switch_result
+        )
+
+    def _apply_context_switch(self, new_context: str, new_namespace: str, switch_result: Dict[str, Any]) -> None:
+        """Apply context switch result on main thread."""
+        if switch_result.get("success"):
+            self.current_context = new_context
             self.current_namespace = new_namespace
-            self.connection_status = f"Switched namespace to '{new_namespace}'"
-            self._update_status_bar()
+            state.save_state(new_context, new_namespace)
+            self.connection_status = f"Switched to context '{new_context}'"
+        else:
+            self.connection_status = f"Error: {switch_result.get('error', 'Failed to switch context')}"
+        self._update_status_bar()
 
     def action_switch_screen(self, screen: str = "cluster") -> None:
         """Switch screens via action."""
@@ -1002,6 +1036,12 @@ class HelmScreen(Screen):
 
     def _deploy_chart(self, chart_name: str) -> None:
         """Deploy a Helm chart."""
+        # Reject "all" as a Helm deployment namespace
+        if self.current_namespace == "all":
+            self.connection_status = "Select a concrete namespace before deploying"
+            self._update_status_bar()
+            return
+
         # Extract chart name parts
         chart_parts = chart_name.split("/")
         if len(chart_parts) == 2:

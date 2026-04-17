@@ -17,20 +17,22 @@ def setup_logging(debug: bool, log_path: Path) -> None:
     """
     level = logging.DEBUG if debug else logging.WARNING
 
-    # Create formatter
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
-
-    # Configure file handler
-    file_handler = logging.FileHandler(log_path, mode="a")
-    file_handler.setLevel(level)
-    file_handler.setFormatter(formatter)
-
     # Get root logger and configure
     root_logger = logging.getLogger()
     root_logger.setLevel(level)
-    root_logger.addHandler(file_handler)
+
+    # Only attach file handler when debug is enabled
+    if debug:
+        # Create formatter
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+
+        # Configure file handler
+        file_handler = logging.FileHandler(log_path, mode="a")
+        file_handler.setLevel(level)
+        file_handler.setFormatter(formatter)
+        root_logger.addHandler(file_handler)
 
 
 def main() -> None:
