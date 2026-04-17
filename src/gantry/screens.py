@@ -262,7 +262,7 @@ class ClusterScreen(Screen):
     }
     """
 
-    current_resource_type = reactive("Pods")
+    current_resource_type = reactive("Pods", init=False)
     current_namespace = reactive("default")
     current_context = reactive("N/A")
     connection_status = reactive("Disconnected")

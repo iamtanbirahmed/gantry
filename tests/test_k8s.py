@@ -14,21 +14,25 @@ class TestListContexts:
     @patch("gantry.k8s.config.list_kube_config_contexts")
     def test_list_contexts_success(self, mock_list_contexts):
         """Test listing contexts successfully."""
-        # Mock context objects
-        ctx1 = MagicMock()
-        ctx1.name = "minikube"
-        ctx1.context.cluster = "minikube"
-        ctx1.context.user = "minikube"
-        ctx1.context.namespace = "default"
+        # Mock context dicts (as returned by kubernetes library)
+        ctx1 = {
+            "name": "minikube",
+            "context": {
+                "cluster": "minikube",
+                "user": "minikube",
+                "namespace": "default"
+            }
+        }
 
-        ctx2 = MagicMock()
-        ctx2.name = "docker-desktop"
-        ctx2.context.cluster = "docker-desktop"
-        ctx2.context.user = "docker-desktop"
-        ctx2.context.namespace = None
+        ctx2 = {
+            "name": "docker-desktop",
+            "context": {
+                "cluster": "docker-desktop",
+                "user": "docker-desktop"
+            }
+        }
 
-        active_ctx = MagicMock()
-        active_ctx.name = "minikube"
+        active_ctx = {"name": "minikube"}
 
         mock_list_contexts.return_value = ([ctx1, ctx2], active_ctx)
 

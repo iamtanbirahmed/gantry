@@ -27,11 +27,11 @@ def list_contexts() -> List[Dict[str, Any]]:
         result = []
         for ctx in contexts:
             result.append({
-                "name": ctx.name,
-                "cluster": ctx.context.cluster,
-                "user": ctx.context.user,
-                "namespace": ctx.context.namespace or "default",
-                "current": ctx.name == active_context.name,
+                "name": ctx["name"],
+                "cluster": ctx["context"]["cluster"],
+                "user": ctx["context"]["user"],
+                "namespace": ctx["context"].get("namespace") or "default",
+                "current": ctx["name"] == active_context["name"],
             })
         logger.debug(f"list_contexts returned {len(result)} contexts")
         return result
