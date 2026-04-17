@@ -13,7 +13,7 @@ from textual import work
 from textual.reactive import reactive
 import json
 
-from gantry import k8s
+from gantry import k8s, state
 from gantry.widgets import ResourceTable, SearchInput, StatusBar
 
 logger = logging.getLogger(__name__)
@@ -159,6 +159,7 @@ class ContextPickerModal(ModalScreen):
             self._load_namespaces_worker(self.selected_context)
         elif event.option_list.id == "namespace-list":
             self.selected_namespace = event.option_id
+            self.action_submit()
 
     def action_submit(self) -> None:
         """Submit the selected context and namespace."""
@@ -336,6 +337,21 @@ class ClusterScreen(Screen):
                     namespace = ctx.get("namespace", "default")
                     break
             status = "Connected"
+
+        # Restore persisted state if available
+        saved = state.load_state()
+        if saved:
+            valid_names = {ctx["name"] for ctx in contexts if "error" not in ctx}
+            saved_ctx = saved.get("context")
+            saved_ns = saved.get("namespace")
+            if saved_ctx and saved_ctx in valid_names:
+                if saved_ctx != context_name:
+                    k8s.switch_context(saved_ctx)
+                context_name = saved_ctx
+                namespace = saved_ns or namespace
+                status = "Connected"
+                logger.debug(f"Restored from state: context={context_name}, namespace={namespace}")
+
         logger.debug(f"_load_context_info_worker completed: context={context_name}, namespace={namespace}")
         self.app.call_from_thread(self._apply_context_info, context_name, namespace, status)
 
@@ -634,6 +650,7 @@ class ClusterScreen(Screen):
                 self._switch_context_worker(new_context, new_namespace)
             else:
                 self.current_namespace = new_namespace
+                state.save_state(self.current_context, new_namespace)
                 self._refresh_resources()
                 self._update_status_bar()
 
@@ -650,6 +667,7 @@ class ClusterScreen(Screen):
         if switch_result.get("success"):
             self.current_context = new_context
             self.current_namespace = new_namespace
+            state.save_state(new_context, new_namespace)
             self.connection_status = f"Switched to context '{new_context}'"
             self._refresh_resources()
         else:
