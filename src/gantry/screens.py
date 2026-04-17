@@ -1,9 +1,11 @@
 """Screen components for Gantry TUI."""
 
+import logging
 from typing import Any, Dict, List, Optional
 from textual.screen import Screen, ModalScreen
 from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
 from textual.widgets import Label, Static, Button, OptionList, Input, TextArea
+from textual.widgets.option_list import Option
 from textual.widget import Widget
 from textual.binding import Binding
 from textual.message import Message
@@ -11,8 +13,10 @@ from textual import work
 from textual.reactive import reactive
 import json
 
-from gantry import k8s
+from gantry import k8s, state
 from gantry.widgets import ResourceTable, SearchInput, StatusBar
+
+logger = logging.getLogger(__name__)
 
 
 class ContextPickerModal(ModalScreen):
@@ -77,7 +81,7 @@ class ContextPickerModal(ModalScreen):
         self.contexts = contexts
         self.current_context = current_context
         self.current_namespace = current_namespace
-        self.namespaces = ["default", "kube-system", "kube-public"]  # Common namespaces
+        self.namespaces = ["all"]  # Start with "all" option
         self.selected_context = current_context
         self.selected_namespace = current_namespace
 
@@ -89,17 +93,15 @@ class ContextPickerModal(ModalScreen):
             with Vertical(id="contexts-section"):
                 yield Label("Contexts:", id="contexts-label")
                 options = [
-                    (ctx.get("name", "Unknown"), ctx.get("name", "Unknown"))
+                    Option(ctx.get("name", "Unknown"), id=ctx.get("name", "Unknown"))
                     for ctx in self.contexts
                 ]
-                yield OptionList(id="context-list", *options)
+                yield OptionList(*options, id="context-list")
 
             with Vertical(id="namespaces-section"):
                 yield Label("Namespaces:", id="namespaces-label")
-                ns_options = [
-                    (ns, ns) for ns in self.namespaces
-                ]
-                yield OptionList(id="namespace-list", *ns_options)
+                ns_options = [Option(ns, id=ns) for ns in self.namespaces]
+                yield OptionList(*ns_options, id="namespace-list")
 
             yield Label("Press Enter to select or Esc to cancel", id="picker-footer")
 
@@ -109,30 +111,71 @@ class ContextPickerModal(ModalScreen):
             ctx_list = self.query_one("#context-list", OptionList)
             ns_list = self.query_one("#namespace-list", OptionList)
 
-            # Find and highlight current selections
-            for i, opt in enumerate(ctx_list.options):
-                if opt[1] == self.current_context:
+            # Load namespaces asynchronously for the current context
+            self._load_namespaces_worker(self.current_context)
+
+            # Find and highlight current context
+            for i in range(ctx_list.option_count):
+                opt = ctx_list.get_option_at_index(i)
+                if opt.id == self.current_context:
                     ctx_list.highlighted = i
                     break
 
-            for i, opt in enumerate(ns_list.options):
-                if opt[1] == self.current_namespace:
-                    ns_list.highlighted = i
-                    break
+            # Namespace highlight will be applied by _set_namespaces after loading
 
             ctx_list.focus()
+        except Exception:
+            pass
+
+    @work(thread=True)
+    def _load_namespaces_worker(self, context_name: str) -> None:
+        """Load available namespaces from the cluster in a background thread."""
+        namespaces = k8s.list_namespaces(context_name=context_name)
+        self.app.call_from_thread(self._set_namespaces, namespaces)
+
+    def _set_namespaces(self, namespaces: List[str]) -> None:
+        """Update the namespace list with loaded values."""
+        # Start with "all" option, then add actual namespaces
+        self.namespaces = ["all"] + sorted(namespaces)
+
+        # Update the namespace list options
+        try:
+            ns_list = self.query_one("#namespace-list", OptionList)
+            ns_list.clear_options()
+            for ns in self.namespaces:
+                ns_list.add_option(Option(ns, id=ns))
+
+            # Highlight the current namespace after populating the list
+            for i in range(ns_list.option_count):
+                if ns_list.get_option_at_index(i).id == self.current_namespace:
+                    ns_list.highlighted = i
+                    break
         except Exception:
             pass
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         """Handle option selection."""
         if event.option_list.id == "context-list":
-            self.selected_context = event.option_list.options[event.cursor_position][1]
+            self.selected_context = event.option_id
+            # Reload namespaces for the newly selected context
+            self._load_namespaces_worker(self.selected_context)
         elif event.option_list.id == "namespace-list":
-            self.selected_namespace = event.option_list.options[event.cursor_position][1]
+            self.selected_namespace = event.option_id
+            self.action_submit()
 
     def action_submit(self) -> None:
         """Submit the selected context and namespace."""
+        try:
+            ctx_list = self.query_one("#context-list", OptionList)
+            if ctx_list.highlighted is not None:
+                self.selected_context = ctx_list.get_option_at_index(ctx_list.highlighted).id
+
+            ns_list = self.query_one("#namespace-list", OptionList)
+            if ns_list.highlighted is not None:
+                self.selected_namespace = ns_list.get_option_at_index(ns_list.highlighted).id
+        except Exception:
+            pass
+        logger.debug(f"action_submit: selected context={self.selected_context}, namespace={self.selected_namespace}")
         self.dismiss((self.selected_context, self.selected_namespace))
 
     def action_cancel(self) -> None:
@@ -144,7 +187,7 @@ class ClusterScreen(Screen):
     """Screen for Kubernetes cluster exploration and management."""
 
     BINDINGS = [
-        ("tab", "switch_screen('helm')", "Switch to Helm View"),
+        ("tab", "app.action_switch_screen", "Switch to Helm View"),
         ("slash", "focus_search", "Search"),
         ("c", "show_context_picker", "Pick Context"),
         ("d", "describe_resource", "Describe"),
@@ -233,7 +276,7 @@ class ClusterScreen(Screen):
     }
     """
 
-    current_resource_type = reactive("Pods")
+    current_resource_type = reactive("Pods", init=False)
     current_namespace = reactive("default")
     current_context = reactive("N/A")
     connection_status = reactive("Disconnected")
@@ -248,6 +291,7 @@ class ClusterScreen(Screen):
             "Deployments": [],
             "ConfigMaps": [],
         }
+        self._fetch_id: int = 0
 
     def compose(self):
         """Compose the cluster screen."""
@@ -276,8 +320,6 @@ class ClusterScreen(Screen):
         self.title = "Gantry - Cluster Management"
         # Load initial context and namespace
         self._load_context_info()
-        # Load initial resources
-        self._refresh_resources()
 
     def _load_context_info(self) -> None:
         """Load current Kubernetes context and namespace."""
@@ -286,17 +328,43 @@ class ClusterScreen(Screen):
     @work(thread=True)
     def _load_context_info_worker(self) -> None:
         """Worker to load context information without blocking UI."""
+        logger.debug("_load_context_info_worker started")
         contexts = k8s.list_contexts()
+        context_name = "N/A"
+        namespace = "default"
+        status = "Error"
         if contexts:
             for ctx in contexts:
                 if ctx.get("current"):
-                    self.current_context = ctx.get("name", "N/A")
-                    self.current_namespace = ctx.get("namespace", "default")
+                    context_name = ctx.get("name", "N/A")
+                    namespace = ctx.get("namespace", "default")
                     break
-            self.connection_status = "Connected"
-        else:
-            self.connection_status = "Error"
+            status = "Connected"
+
+        # Restore persisted state if available
+        saved = state.load_state()
+        if saved:
+            valid_names = {ctx["name"] for ctx in contexts if "error" not in ctx}
+            saved_ctx = saved.get("context")
+            saved_ns = saved.get("namespace")
+            if saved_ctx and saved_ctx in valid_names:
+                if saved_ctx != context_name:
+                    k8s.switch_context(saved_ctx)
+                context_name = saved_ctx
+                namespace = saved_ns or namespace
+                status = "Connected"
+                logger.debug(f"Restored from state: context={context_name}, namespace={namespace}")
+
+        logger.debug(f"_load_context_info_worker completed: context={context_name}, namespace={namespace}")
+        self.app.call_from_thread(self._apply_context_info, context_name, namespace, status)
+
+    def _apply_context_info(self, context_name: str, namespace: str, status: str) -> None:
+        """Apply context info on main thread."""
+        self.current_context = context_name
+        self.current_namespace = namespace
+        self.connection_status = status
         self._update_status_bar()
+        self._refresh_resources()
 
     def _update_status_bar(self) -> None:
         """Update the status bar with current info."""
@@ -311,14 +379,18 @@ class ClusterScreen(Screen):
 
     def _refresh_resources(self) -> None:
         """Refresh the resource list based on current type."""
+        self._fetch_id += 1
+        fetch_id = self._fetch_id
         resource_type = self.current_resource_type
         namespace = self.current_namespace
-        self._fetch_resources_worker(resource_type, namespace)
+        self._fetch_resources_worker(fetch_id, resource_type, namespace)
 
     @work(thread=True)
-    def _fetch_resources_worker(self, resource_type: str, namespace: str) -> None:
+    def _fetch_resources_worker(self, fetch_id: int, resource_type: str, namespace: str) -> None:
         """Worker to fetch resources without blocking UI."""
+        logger.debug(f"_fetch_resources_worker started: fetch_id={fetch_id}, resource_type={resource_type}, namespace={namespace}")
         resources = []
+        status = "Connected"
         try:
             if resource_type == "Pods":
                 resources = k8s.list_pods(namespace)
@@ -334,29 +406,62 @@ class ClusterScreen(Screen):
 
             # Store and display
             self._all_resources[resource_type] = resources
-            self._display_resources(resource_type, resources)
-            self.connection_status = "Connected"
+            logger.debug(f"_fetch_resources_worker completed: {len(resources)} {resource_type} fetched")
+            self.app.call_from_thread(self._display_resources, fetch_id, resource_type, namespace, resources)
         except Exception as e:
-            self.connection_status = f"Error: {str(e)}"
+            logger.error(f"Error in _fetch_resources_worker: {e}", exc_info=True)
+            status = f"Error: {str(e)}"
         finally:
-            self._update_status_bar()
+            self.app.call_from_thread(self._apply_fetch_status, fetch_id, status)
 
-    def _display_resources(self, resource_type: str, resources: List[Dict[str, Any]]) -> None:
+    def _apply_fetch_status(self, fetch_id: int, status: str) -> None:
+        """Apply fetch status on main thread."""
+        if fetch_id != self._fetch_id:
+            return
+        self.connection_status = status
+        self._update_status_bar()
+
+    def _display_resources(self, fetch_id: int, resource_type: str, namespace: str, resources: List[Dict[str, Any]]) -> None:
         """Display resources in the table."""
+        # Ignore stale fetch results - only render if this is the current request
+        if fetch_id != self._fetch_id:
+            return
+        if resource_type != self.current_resource_type or namespace != self.current_namespace:
+            return
+
         table: ResourceTable = self.query_one("#resource-table", ResourceTable)
 
+        # Check if we're in all-namespace mode
+        is_all_namespaces = namespace == "all"
+
         if resource_type == "Pods":
-            columns = ["Name", "Status", "Ready", "Restarts"]
-            keys = ["name", "status", "ready", "restarts"]
+            if is_all_namespaces:
+                columns = ["Name", "Namespace", "Status", "Ready", "Restarts"]
+                keys = ["name", "namespace", "status", "ready", "restarts"]
+            else:
+                columns = ["Name", "Status", "Ready", "Restarts"]
+                keys = ["name", "status", "ready", "restarts"]
         elif resource_type == "Services":
-            columns = ["Name", "Type", "Cluster IP"]
-            keys = ["name", "type", "cluster_ip"]
+            if is_all_namespaces:
+                columns = ["Name", "Namespace", "Type", "Cluster IP"]
+                keys = ["name", "namespace", "type", "cluster_ip"]
+            else:
+                columns = ["Name", "Type", "Cluster IP"]
+                keys = ["name", "type", "cluster_ip"]
         elif resource_type == "Deployments":
-            columns = ["Name", "Replicas", "Ready", "Available"]
-            keys = ["name", "replicas", "ready_replicas", "available_replicas"]
+            if is_all_namespaces:
+                columns = ["Name", "Namespace", "Replicas", "Ready", "Available"]
+                keys = ["name", "namespace", "replicas", "ready_replicas", "available_replicas"]
+            else:
+                columns = ["Name", "Replicas", "Ready", "Available"]
+                keys = ["name", "replicas", "ready_replicas", "available_replicas"]
         elif resource_type == "ConfigMaps":
-            columns = ["Name", "Keys"]
-            keys = ["name", "key_count"]
+            if is_all_namespaces:
+                columns = ["Name", "Namespace", "Keys"]
+                keys = ["name", "namespace", "key_count"]
+            else:
+                columns = ["Name", "Keys"]
+                keys = ["name", "key_count"]
         else:
             return
 
@@ -376,10 +481,8 @@ class ClusterScreen(Screen):
         elif button_id == "btn-configmaps":
             self.current_resource_type = "ConfigMaps"
 
-        # Update button styles
+        # Update button styles (reactive watcher handles refresh)
         self._update_button_styles()
-        # Refresh resources
-        self._refresh_resources()
 
     def _update_button_styles(self) -> None:
         """Update button styles based on current resource type."""
@@ -406,7 +509,7 @@ class ClusterScreen(Screen):
     def action_describe_resource(self) -> None:
         """Describe the selected resource."""
         table: ResourceTable = self.query_one("#resource-table", ResourceTable)
-        if not table.cursor_row or not self._resource_data:
+        if not self._resource_data:
             return
 
         row_index = table.cursor_row
@@ -414,26 +517,35 @@ class ClusterScreen(Screen):
             resource = self._resource_data[row_index]
             resource_name = resource.get("name", "Unknown")
             resource_type = self.current_resource_type.rstrip("s")  # Remove trailing 's'
+            # Use row's namespace if in all-namespace mode, otherwise use current namespace
+            namespace = resource.get("namespace", self.current_namespace) if self.current_namespace == "all" else self.current_namespace
 
-            self._show_describe_dialog(resource_type, resource_name)
+            self._show_describe_dialog(resource_type, resource_name, namespace)
 
-    def _show_describe_dialog(self, resource_type: str, resource_name: str) -> None:
+    def _show_describe_dialog(self, resource_type: str, resource_name: str, namespace: str) -> None:
         """Show a dialog with resource details."""
-        self._describe_resource_worker(resource_type, resource_name)
+        self._describe_resource_worker(resource_type, resource_name, namespace)
 
     @work(thread=True)
-    def _describe_resource_worker(self, resource_type: str, resource_name: str) -> None:
+    def _describe_resource_worker(self, resource_type: str, resource_name: str, namespace: str) -> None:
         """Worker to fetch resource description."""
+        logger.debug(f"_describe_resource_worker started: {resource_type}/{resource_name} in {namespace}")
         result = k8s.describe_resource(
-            resource_type, resource_name, namespace=self.current_namespace
+            resource_type, resource_name, namespace=namespace
         )
         if result:
-            # Format the result as a readable string
             description = self._format_resource_description(resource_type, result)
-            self._display_detail_panel(description)
-            self.connection_status = f"Described {resource_name}"
+            status = f"Described {resource_name}"
+            logger.debug(f"_describe_resource_worker completed: {resource_type}/{resource_name}")
+            self.app.call_from_thread(self._apply_describe_result, description, status)
         else:
-            self.connection_status = f"Failed to describe {resource_name}"
+            logger.error(f"Failed to describe {resource_type}/{resource_name}")
+            self.app.call_from_thread(self._apply_fetch_status, f"Failed to describe {resource_name}")
+
+    def _apply_describe_result(self, description: str, status: str) -> None:
+        """Apply describe result on main thread."""
+        self._display_detail_panel(description)
+        self.connection_status = status
         self._update_status_bar()
 
     def _format_resource_description(self, resource_type: str, result: Dict[str, Any]) -> str:
@@ -490,26 +602,30 @@ class ClusterScreen(Screen):
             return
 
         table: ResourceTable = self.query_one("#resource-table", ResourceTable)
-        if not table.cursor_row or not self._resource_data:
+        if not self._resource_data:
             return
 
         row_index = table.cursor_row
         if 0 <= row_index < len(self._resource_data):
             pod = self._resource_data[row_index]
             pod_name = pod.get("name", "Unknown")
-            self._show_logs_worker(pod_name)
+            # Use row's namespace if in all-namespace mode, otherwise use current namespace
+            namespace = pod.get("namespace", self.current_namespace) if self.current_namespace == "all" else self.current_namespace
+            self._show_logs_worker(pod_name, namespace)
 
     @work(thread=True)
-    def _show_logs_worker(self, pod_name: str) -> None:
+    def _show_logs_worker(self, pod_name: str, namespace: str) -> None:
         """Worker to fetch and display pod logs."""
-        logs = k8s.get_pod_logs(pod_name, namespace=self.current_namespace)
+        logger.debug(f"_show_logs_worker started for pod {pod_name} in {namespace}")
+        logs = k8s.get_pod_logs(pod_name, namespace=namespace)
         if logs:
             log_display = f"=== Logs for {pod_name} ===\n\n{logs}"
-            self._display_detail_panel(log_display)
-            self.connection_status = f"Logs for {pod_name}"
+            status = f"Logs for {pod_name}"
+            logger.debug(f"_show_logs_worker completed for pod {pod_name}")
+            self.app.call_from_thread(self._apply_describe_result, log_display, status)
         else:
-            self.connection_status = f"Failed to retrieve logs for {pod_name}"
-        self._update_status_bar()
+            logger.error(f"Failed to retrieve logs for pod {pod_name}")
+            self.app.call_from_thread(self._apply_fetch_status, f"Failed to retrieve logs for {pod_name}")
 
     def action_refresh_resources(self) -> None:
         """Refresh the resource list."""
@@ -517,7 +633,16 @@ class ClusterScreen(Screen):
 
     def action_show_context_picker(self) -> None:
         """Show the context/namespace picker modal."""
+        self._load_contexts_for_picker_worker()
+
+    @work(thread=True)
+    def _load_contexts_for_picker_worker(self) -> None:
+        """Load contexts in background for the picker modal."""
         contexts = k8s.list_contexts()
+        self.app.call_from_thread(self._show_context_picker_modal, contexts)
+
+    def _show_context_picker_modal(self, contexts: List[Dict[str, Any]]) -> None:
+        """Show the context picker modal on main thread."""
         if not contexts or any("error" in ctx for ctx in contexts):
             self.connection_status = "Error: Unable to load contexts"
             self._update_status_bar()
@@ -531,19 +656,32 @@ class ClusterScreen(Screen):
         if result:
             new_context, new_namespace = result
             if new_context != self.current_context:
-                # Switch context
-                switch_result = k8s.switch_context(new_context)
-                if switch_result.get("success"):
-                    self.current_context = new_context
-                    self.current_namespace = new_namespace
-                    self.connection_status = f"Switched to context '{new_context}'"
-                    self._refresh_resources()
-                else:
-                    self.connection_status = f"Error: {switch_result.get('error', 'Failed to switch context')}"
+                self._switch_context_worker(new_context, new_namespace)
             else:
                 self.current_namespace = new_namespace
+                state.save_state(self.current_context, new_namespace)
+                self._refresh_resources()
+                self._update_status_bar()
 
-            self._update_status_bar()
+    @work(thread=True)
+    def _switch_context_worker(self, new_context: str, new_namespace: str) -> None:
+        """Switch context in background thread."""
+        switch_result = k8s.switch_context(new_context)
+        self.app.call_from_thread(
+            self._apply_context_switch, new_context, new_namespace, switch_result
+        )
+
+    def _apply_context_switch(self, new_context: str, new_namespace: str, switch_result: Dict[str, Any]) -> None:
+        """Apply context switch result on main thread."""
+        if switch_result.get("success"):
+            self.current_context = new_context
+            self.current_namespace = new_namespace
+            state.save_state(new_context, new_namespace)
+            self.connection_status = f"Switched to context '{new_context}'"
+            self._refresh_resources()
+        else:
+            self.connection_status = f"Error: {switch_result.get('error', 'Failed to switch context')}"
+        self._update_status_bar()
 
     def watch_current_resource_type(self, new_type: str) -> None:
         """React to resource type changes."""
@@ -559,7 +697,7 @@ class HelmScreen(Screen):
     """Screen for Helm chart exploration and deployment."""
 
     BINDINGS = [
-        ("tab", "switch_screen('cluster')", "Switch to Cluster View"),
+        ("tab", "app.action_switch_screen", "Switch to Cluster View"),
         ("slash", "focus_search", "Search"),
         ("c", "show_context_picker", "Pick Context"),
         ("enter", "execute_action('deploy')", "Deploy Chart"),
@@ -648,6 +786,7 @@ class HelmScreen(Screen):
     """
 
     current_repo = reactive("Select a repo")
+    current_context = reactive("")
     connection_status = reactive("Loading repos...")
     current_namespace = reactive("default")
 
@@ -690,6 +829,7 @@ class HelmScreen(Screen):
     @work(thread=True)
     def _load_repos_worker(self) -> None:
         """Worker to load repos without blocking UI."""
+        logger.debug("_load_repos_worker started")
         from gantry import helm
 
         repos = helm.list_repos()
@@ -697,18 +837,21 @@ class HelmScreen(Screen):
         # Filter out error entries
         repos = [r for r in repos if "error" not in r]
 
+        logger.debug(f"_load_repos_worker completed: {len(repos)} repos loaded")
+        self.app.call_from_thread(self._apply_repos, repos)
+
+    def _apply_repos(self, repos: List[Dict[str, Any]]) -> None:
+        """Apply loaded repos on main thread."""
         if repos:
             self._repos = repos
             self.connection_status = "Connected"
-            # Auto-select first repo
-            if repos:
-                self._selected_repo = repos[0].get("name")
-                self._load_charts(self._selected_repo)
+            self._selected_repo = repos[0].get("name")
+            self._update_status_bar()
+            self._load_charts(self._selected_repo)
         else:
             self._repos = []
             self.connection_status = "No repos configured"
-
-        self._update_status_bar()
+            self._update_status_bar()
 
     def _load_charts(self, repo: str) -> None:
         """Load charts from a specific repository."""
@@ -717,6 +860,7 @@ class HelmScreen(Screen):
     @work(thread=True)
     def _load_charts_worker(self, repo: str) -> None:
         """Worker to load charts without blocking UI."""
+        logger.debug(f"_load_charts_worker started for repo {repo}")
         from gantry import helm
 
         # Search for all charts in the repo by using an empty query
@@ -725,16 +869,18 @@ class HelmScreen(Screen):
         # Filter out error entries
         charts = [c for c in charts if "error" not in c]
 
+        logger.debug(f"_load_charts_worker completed: {len(charts)} charts loaded from {repo}")
+        self.app.call_from_thread(self._apply_charts, repo, charts)
+
+    def _apply_charts(self, repo: str, charts: List[Dict[str, Any]]) -> None:
+        """Apply loaded charts on main thread."""
         self._all_charts = charts
         self._display_charts(charts)
-
+        self.current_repo = repo
         if charts:
-            self.current_repo = repo
             self.connection_status = f"Loaded {len(charts)} charts from {repo}"
         else:
-            self.current_repo = repo
             self.connection_status = f"No charts found in {repo}"
-
         self._update_status_bar()
 
     def _display_charts(self, charts: List[Dict[str, Any]]) -> None:
@@ -801,14 +947,26 @@ class HelmScreen(Screen):
 
     def action_show_context_picker(self) -> None:
         """Show the context/namespace picker modal."""
+        self._load_contexts_for_picker_worker()
+
+    @work(thread=True)
+    def _load_contexts_for_picker_worker(self) -> None:
+        """Load contexts in background for the picker modal."""
         contexts = k8s.list_contexts()
+        self.app.call_from_thread(self._show_context_picker_modal, contexts)
+
+    def _show_context_picker_modal(self, contexts: List[Dict[str, Any]]) -> None:
+        """Show the context picker modal on main thread."""
         if not contexts or any("error" in ctx for ctx in contexts):
             self.connection_status = "Error: Unable to load contexts"
             self._update_status_bar()
             return
 
-        # Use a dummy context for display
-        current_context = self.current_repo
+        # Find the active context from the list
+        current_context = next(
+            (ctx["name"] for ctx in contexts if ctx.get("current")), ""
+        )
+        self.current_context = current_context
         modal = ContextPickerModal(contexts, current_context, self.current_namespace)
         self.app.push_screen(modal, callback=self._on_context_picker_dismiss)
 
@@ -816,10 +974,33 @@ class HelmScreen(Screen):
         """Handle context picker result."""
         if result:
             new_context, new_namespace = result
-            # Update namespace and refresh
+            if new_context != self.current_context:
+                self._switch_context_worker(new_context, new_namespace)
+            else:
+                # Only namespace changed
+                self.current_namespace = new_namespace
+                state.save_state(self.current_context, new_namespace)
+                self.connection_status = f"Switched namespace to '{new_namespace}'"
+                self._update_status_bar()
+
+    @work(thread=True)
+    def _switch_context_worker(self, new_context: str, new_namespace: str) -> None:
+        """Switch context in background thread."""
+        switch_result = k8s.switch_context(new_context)
+        self.app.call_from_thread(
+            self._apply_context_switch, new_context, new_namespace, switch_result
+        )
+
+    def _apply_context_switch(self, new_context: str, new_namespace: str, switch_result: Dict[str, Any]) -> None:
+        """Apply context switch result on main thread."""
+        if switch_result.get("success"):
+            self.current_context = new_context
             self.current_namespace = new_namespace
-            self.connection_status = f"Switched namespace to '{new_namespace}'"
-            self._update_status_bar()
+            state.save_state(new_context, new_namespace)
+            self.connection_status = f"Switched to context '{new_context}'"
+        else:
+            self.connection_status = f"Error: {switch_result.get('error', 'Failed to switch context')}"
+        self._update_status_bar()
 
     def action_switch_screen(self, screen: str = "cluster") -> None:
         """Switch screens via action."""
@@ -855,6 +1036,12 @@ class HelmScreen(Screen):
 
     def _deploy_chart(self, chart_name: str) -> None:
         """Deploy a Helm chart."""
+        # Reject "all" as a Helm deployment namespace
+        if self.current_namespace == "all":
+            self.connection_status = "Select a concrete namespace before deploying"
+            self._update_status_bar()
+            return
+
         # Extract chart name parts
         chart_parts = chart_name.split("/")
         if len(chart_parts) == 2:
@@ -871,6 +1058,7 @@ class HelmScreen(Screen):
     @work(thread=True)
     def _deploy_chart_worker(self, release_name: str, chart_name: str) -> None:
         """Worker to install chart without blocking UI."""
+        logger.debug(f"_deploy_chart_worker started: release_name={release_name}, chart_name={chart_name}")
         from gantry import helm
 
         result = helm.install_chart(
@@ -881,11 +1069,18 @@ class HelmScreen(Screen):
 
         if result.get("success"):
             detail = f"=== Deployment Successful ===\n\n{result.get('message', 'Chart deployed')}"
-            self.connection_status = f"Deployed: {release_name}"
+            status = f"Deployed: {release_name}"
+            logger.debug(f"_deploy_chart_worker completed: {chart_name} deployed as {release_name}")
         else:
             error_msg = result.get("error", "Unknown error")
             detail = f"=== Deployment Failed ===\n\nError: {error_msg}"
-            self.connection_status = f"Error: {error_msg[:50]}"
+            status = f"Error: {error_msg[:50]}"
+            logger.error(f"_deploy_chart_worker failed: {error_msg}")
 
+        self.app.call_from_thread(self._apply_deploy_result, detail, status)
+
+    def _apply_deploy_result(self, detail: str, status: str) -> None:
+        """Apply deployment result on main thread."""
+        self.connection_status = status
         self._display_detail_panel(detail)
         self._update_status_bar()
