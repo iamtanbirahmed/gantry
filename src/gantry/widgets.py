@@ -1,9 +1,12 @@
 """Custom widgets for Gantry TUI."""
 
+import logging
 from typing import Any, Dict, List, Optional, Callable
 from textual.widgets import DataTable, Static, Input
 from textual.containers import Container, Horizontal, Vertical
 from textual.message import Message
+
+logger = logging.getLogger(__name__)
 
 
 class ResourceTable(DataTable):
@@ -38,6 +41,7 @@ class ResourceTable(DataTable):
     """
 
     def __init__(self, *args, **kwargs):
+        kwargs.setdefault("cursor_type", "row")
         super().__init__(*args, **kwargs)
         self._all_rows: Dict[str, List[Any]] = {}
         self._search_term: str = ""
@@ -102,12 +106,11 @@ class ResourceTable(DataTable):
 
     def on_data_table_row_selected(self, event) -> None:
         """Handle row selection."""
-        row_key = event.cursor_row
+        row_key = str(event.row_key)
+        logger.debug(f"ResourceTable row selected: {row_key}")
         if row_key in self._all_rows:
-            # Find the row data based on the visible row
-            # For now, we'll create a simple row_data from visible cells
-            row_data = {"key": str(row_key)}
-            self.post_message(self.RowSelected(str(row_key), row_data))
+            row_data = {"key": row_key}
+            self.post_message(self.RowSelected(row_key, row_data))
 
 
 class SearchInput(Input):
@@ -144,16 +147,12 @@ class SearchInput(Input):
     """
 
     def __init__(self, *args, **kwargs):
+        kwargs.setdefault("placeholder", "Type to search...")
         super().__init__(*args, **kwargs)
-        self.prefix = "/"
-
-    def render_line(self, y: int) -> str:
-        """Render the input line with prefix."""
-        base_line = super().render_line(y)
-        return self.prefix + base_line if y == 0 else base_line
 
     def on_input_changed(self, message: Input.Changed) -> None:
         """Post a SearchChanged message when input changes."""
+        logger.debug(f"SearchInput changed: '{message.value}'")
         self.post_message(self.SearchChanged(message.value))
 
 

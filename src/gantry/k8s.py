@@ -1,10 +1,13 @@
 """Kubernetes API backend module."""
 
+import logging
 import os
 from typing import Any, Dict, List, Optional
 
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
+
+logger = logging.getLogger(__name__)
 
 
 def list_contexts() -> List[Dict[str, Any]]:
@@ -14,6 +17,7 @@ def list_contexts() -> List[Dict[str, Any]]:
     Returns a list of dictionaries with context information.
     Returns empty list if kubeconfig is missing or invalid.
     """
+    logger.debug("list_contexts called")
     try:
         _, active_context = config.list_kube_config_contexts()
         if active_context is None:
@@ -29,10 +33,12 @@ def list_contexts() -> List[Dict[str, Any]]:
                 "namespace": ctx.context.namespace or "default",
                 "current": ctx.name == active_context.name,
             })
+        logger.debug(f"list_contexts returned {len(result)} contexts")
         return result
     except (config.config_exception.ConfigException, FileNotFoundError):
         return []
     except Exception as e:
+        logger.error(f"Error in list_contexts: {e}", exc_info=True)
         return [{"error": str(e), "type": "list_contexts_error"}]
 
 
@@ -45,26 +51,31 @@ def switch_context(context_name: str) -> Dict[str, Any]:
 
     Returns a dictionary with status of the operation.
     """
+    logger.debug(f"switch_context called with context_name={context_name}")
     try:
         config.load_kube_config(context=context_name)
+        logger.debug(f"Successfully switched to context {context_name}")
         return {
             "success": True,
             "context": context_name,
             "message": f"Switched to context '{context_name}'",
         }
     except config.config_exception.ConfigException as e:
+        logger.error(f"Config error in switch_context: {e}")
         return {
             "success": False,
             "error": str(e),
             "type": "config_error",
         }
     except FileNotFoundError:
+        logger.error("kubeconfig file not found in switch_context")
         return {
             "success": False,
             "error": "kubeconfig file not found",
             "type": "missing_kubeconfig",
         }
     except Exception as e:
+        logger.error(f"Error in switch_context: {e}", exc_info=True)
         return {
             "success": False,
             "error": str(e),
@@ -81,14 +92,19 @@ def list_namespaces(context_name: Optional[str] = None) -> List[str]:
 
     Returns a list of namespace names, or an empty list if unable to fetch.
     """
+    logger.debug(f"list_namespaces called with context_name={context_name}")
     try:
         config.load_kube_config(context=context_name)
         v1 = client.CoreV1Api()
         namespaces = v1.list_namespace()
-        return [ns.metadata.name for ns in namespaces.items]
+        result = [ns.metadata.name for ns in namespaces.items]
+        logger.debug(f"list_namespaces returned {len(result)} namespaces")
+        return result
     except (config.config_exception.ConfigException, FileNotFoundError):
+        logger.debug("kubeconfig not found in list_namespaces")
         return []
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error in list_namespaces: {e}", exc_info=True)
         return []
 
 
@@ -101,6 +117,7 @@ def list_pods(namespace: str = "default") -> List[Dict[str, Any]]:
 
     Returns a list of pod dictionaries with name, status, ready replicas, etc.
     """
+    logger.debug(f"list_pods called with namespace={namespace}")
     try:
         config.load_kube_config()
         v1 = client.CoreV1Api()
@@ -131,14 +148,18 @@ def list_pods(namespace: str = "default") -> List[Dict[str, Any]]:
                     else None
                 ),
             })
+        logger.debug(f"list_pods returned {len(result)} pods for namespace={namespace}")
         return result
     except config.config_exception.ConfigException:
+        logger.error("kubeconfig not found or invalid in list_pods")
         return [{"error": "kubeconfig not found or invalid", "type": "missing_kubeconfig"}]
     except ApiException as e:
         if e.status == 404:
             return []
+        logger.error(f"API error in list_pods: {e}", exc_info=True)
         return [{"error": str(e), "type": "api_error", "status": e.status}]
     except Exception as e:
+        logger.error(f"Error in list_pods: {e}", exc_info=True)
         return [{"error": str(e), "type": "list_pods_error"}]
 
 
@@ -151,6 +172,7 @@ def list_services(namespace: str = "default") -> List[Dict[str, Any]]:
 
     Returns a list of service dictionaries with name, type, cluster IP, ports, etc.
     """
+    logger.debug(f"list_services called with namespace={namespace}")
     try:
         config.load_kube_config()
         v1 = client.CoreV1Api()
@@ -180,14 +202,18 @@ def list_services(namespace: str = "default") -> List[Dict[str, Any]]:
                 "external_ips": svc.spec.external_i_ps or [],
                 "ports": ports,
             })
+        logger.debug(f"list_services returned {len(result)} services for namespace={namespace}")
         return result
     except config.config_exception.ConfigException:
+        logger.error("kubeconfig not found or invalid in list_services")
         return [{"error": "kubeconfig not found or invalid", "type": "missing_kubeconfig"}]
     except ApiException as e:
         if e.status == 404:
             return []
+        logger.error(f"API error in list_services: {e}", exc_info=True)
         return [{"error": str(e), "type": "api_error", "status": e.status}]
     except Exception as e:
+        logger.error(f"Error in list_services: {e}", exc_info=True)
         return [{"error": str(e), "type": "list_services_error"}]
 
 
@@ -200,6 +226,7 @@ def list_deployments(namespace: str = "default") -> List[Dict[str, Any]]:
 
     Returns a list of deployment dictionaries with name, replicas, status, etc.
     """
+    logger.debug(f"list_deployments called with namespace={namespace}")
     try:
         config.load_kube_config()
         apps_v1 = client.AppsV1Api()
@@ -220,14 +247,18 @@ def list_deployments(namespace: str = "default") -> List[Dict[str, Any]]:
                 "available_replicas": deploy.status.available_replicas or 0,
                 "strategy_type": deploy.spec.strategy.type if deploy.spec.strategy else None,
             })
+        logger.debug(f"list_deployments returned {len(result)} deployments for namespace={namespace}")
         return result
     except config.config_exception.ConfigException:
+        logger.error("kubeconfig not found or invalid in list_deployments")
         return [{"error": "kubeconfig not found or invalid", "type": "missing_kubeconfig"}]
     except ApiException as e:
         if e.status == 404:
             return []
+        logger.error(f"API error in list_deployments: {e}", exc_info=True)
         return [{"error": str(e), "type": "api_error", "status": e.status}]
     except Exception as e:
+        logger.error(f"Error in list_deployments: {e}", exc_info=True)
         return [{"error": str(e), "type": "list_deployments_error"}]
 
 
@@ -240,6 +271,7 @@ def list_configmaps(namespace: str = "default") -> List[Dict[str, Any]]:
 
     Returns a list of configmap dictionaries with name, data keys, etc.
     """
+    logger.debug(f"list_configmaps called with namespace={namespace}")
     try:
         config.load_kube_config()
         v1 = client.CoreV1Api()
@@ -258,14 +290,18 @@ def list_configmaps(namespace: str = "default") -> List[Dict[str, Any]]:
                 "keys": data_keys,
                 "key_count": len(data_keys),
             })
+        logger.debug(f"list_configmaps returned {len(result)} configmaps for namespace={namespace}")
         return result
     except config.config_exception.ConfigException:
+        logger.error("kubeconfig not found or invalid in list_configmaps")
         return [{"error": "kubeconfig not found or invalid", "type": "missing_kubeconfig"}]
     except ApiException as e:
         if e.status == 404:
             return []
+        logger.error(f"API error in list_configmaps: {e}", exc_info=True)
         return [{"error": str(e), "type": "api_error", "status": e.status}]
     except Exception as e:
+        logger.error(f"Error in list_configmaps: {e}", exc_info=True)
         return [{"error": str(e), "type": "list_configmaps_error"}]
 
 
@@ -284,6 +320,7 @@ def describe_resource(
 
     Returns a dictionary with the full resource spec, or None if not found.
     """
+    logger.debug(f"describe_resource called for {resource_type}/{resource_name} in {namespace}")
     try:
         config.load_kube_config()
         v1 = client.CoreV1Api()
@@ -375,6 +412,7 @@ def describe_resource(
             }
 
     except config.config_exception.ConfigException:
+        logger.error("kubeconfig not found or invalid in describe_resource")
         return {
             "error": "kubeconfig not found or invalid",
             "type": "missing_kubeconfig",
@@ -382,12 +420,14 @@ def describe_resource(
     except ApiException as e:
         if e.status == 404:
             return None
+        logger.error(f"API error in describe_resource: {e}", exc_info=True)
         return {
             "error": str(e),
             "type": "api_error",
             "status": e.status,
         }
     except Exception as e:
+        logger.error(f"Error in describe_resource: {e}", exc_info=True)
         return {
             "error": str(e),
             "type": "describe_resource_error",
@@ -409,6 +449,7 @@ def get_pod_logs(
 
     Returns a string with the pod logs, or None if not found.
     """
+    logger.debug(f"get_pod_logs called for {pod_name} in {namespace}")
     try:
         config.load_kube_config()
         v1 = client.CoreV1Api()
@@ -417,12 +458,16 @@ def get_pod_logs(
             namespace=namespace,
             tail_lines=tail_lines,
         )
+        logger.debug(f"Retrieved logs for pod {pod_name}")
         return logs
     except config.config_exception.ConfigException:
+        logger.error("kubeconfig not found in get_pod_logs")
         return None
     except ApiException as e:
         if e.status == 404:
             return None
+        logger.error(f"API error in get_pod_logs: {e}", exc_info=True)
         return f"API Error: {str(e)}"
     except Exception as e:
+        logger.error(f"Error in get_pod_logs: {e}", exc_info=True)
         return f"Error: {str(e)}"
