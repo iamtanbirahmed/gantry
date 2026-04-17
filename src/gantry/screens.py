@@ -162,6 +162,17 @@ class ContextPickerModal(ModalScreen):
 
     def action_submit(self) -> None:
         """Submit the selected context and namespace."""
+        try:
+            ctx_list = self.query_one("#context-list", OptionList)
+            if ctx_list.highlighted is not None:
+                self.selected_context = ctx_list.get_option_at_index(ctx_list.highlighted).id
+
+            ns_list = self.query_one("#namespace-list", OptionList)
+            if ns_list.highlighted is not None:
+                self.selected_namespace = ns_list.get_option_at_index(ns_list.highlighted).id
+        except Exception:
+            pass
+        logger.debug(f"action_submit: selected context={self.selected_context}, namespace={self.selected_namespace}")
         self.dismiss((self.selected_context, self.selected_namespace))
 
     def action_cancel(self) -> None:
@@ -923,7 +934,10 @@ class HelmScreen(Screen):
             self._update_status_bar()
             return
 
-        current_context = self.current_repo
+        # Find the active context from the list
+        current_context = next(
+            (ctx["name"] for ctx in contexts if ctx.get("current")), ""
+        )
         modal = ContextPickerModal(contexts, current_context, self.current_namespace)
         self.app.push_screen(modal, callback=self._on_context_picker_dismiss)
 
