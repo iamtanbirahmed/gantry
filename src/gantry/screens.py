@@ -280,6 +280,8 @@ class ClusterScreen(Screen):
     current_namespace = reactive("default")
     current_context = reactive("N/A")
     connection_status = reactive("Disconnected")
+    # Panel focus state: tracks which panel currently has focus
+    current_panel = reactive("sidebar")  # "sidebar", "table", or "search"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
