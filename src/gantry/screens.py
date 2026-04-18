@@ -480,10 +480,14 @@ class ClusterScreen(Screen):
         # Store resource data for actions like describe and logs
         self._resource_data = resources
 
-    def on_list_view_selected(self, event: ListView.Selected) -> None:
-        """Handle resource type selection from sidebar."""
-        if event.list_view.id == "resource-type-sidebar":
-            self.current_resource_type = self._RESOURCE_TYPES[event.index]
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
+        """Handle sidebar up/down navigation - immediately update resource type.
+
+        This replaces on_list_view_selected (Enter-based) to trigger on every
+        up/down arrow press, providing live preview of resource types.
+        """
+        if event.list_view.id == "resource-type-sidebar" and event.list_view.index is not None:
+            self.current_resource_type = self._RESOURCE_TYPES[event.list_view.index]
 
     def action_focus_search(self) -> None:
         """Focus on the search input."""
