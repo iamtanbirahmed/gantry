@@ -168,3 +168,33 @@ async def test_panel_navigation_right_arrow():
         await pilot.press("right")
         await pilot.pause()
         assert screen.current_panel == "sidebar"
+
+
+@pytest.mark.asyncio
+async def test_panel_navigation_left_arrow():
+    """Test that pressing left arrow cycles panels backward."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+
+        # Start on sidebar, move to search first
+        await pilot.press("right")
+        await pilot.press("right")
+        await pilot.pause()
+        assert screen.current_panel == "search"
+
+        # Left arrow → table
+        await pilot.press("left")
+        await pilot.pause()
+        assert screen.current_panel == "table"
+
+        # Left arrow → sidebar
+        await pilot.press("left")
+        await pilot.pause()
+        assert screen.current_panel == "sidebar"
+
+        # Left arrow → search (wraps)
+        await pilot.press("left")
+        await pilot.pause()
+        assert screen.current_panel == "search"
