@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Callable
 from textual.widgets import DataTable, Static, Input
 from textual.containers import Container, Horizontal, Vertical
 from textual.message import Message
+from textual.events import Key
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,17 @@ class ResourceTable(DataTable):
             row_data = {"key": row_key}
             self.post_message(self.RowSelected(row_key, row_data))
 
+    def _on_key(self, event: Key) -> None:
+        """Handle key events and allow right/left arrows to bubble up for panel navigation."""
+        if event.key == "right":
+            event.stop()
+            self.screen.action_focus_next_panel()
+        elif event.key == "left":
+            event.stop()
+            self.screen.action_focus_previous_panel()
+        else:
+            super()._on_key(event)
+
 
 class SearchInput(Input):
     """
@@ -154,6 +166,17 @@ class SearchInput(Input):
         """Post a SearchChanged message when input changes."""
         logger.debug(f"SearchInput changed: '{message.value}'")
         self.post_message(self.SearchChanged(message.value))
+
+    def _on_key(self, event: Key) -> None:
+        """Handle key events and allow right/left arrows to bubble up for panel navigation."""
+        if event.key == "right":
+            event.stop()
+            self.screen.action_focus_next_panel()
+        elif event.key == "left":
+            event.stop()
+            self.screen.action_focus_previous_panel()
+        else:
+            super()._on_key(event)
 
 
 class StatusBar(Static):

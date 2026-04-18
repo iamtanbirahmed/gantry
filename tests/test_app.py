@@ -141,3 +141,30 @@ async def test_sidebar_selection_changes_resource_type():
         await pilot.press("enter")
         await pilot.pause()
         assert screen.current_resource_type == "Services"
+
+
+@pytest.mark.asyncio
+async def test_panel_navigation_right_arrow():
+    """Test that pressing right arrow cycles panels forward."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+
+        # Start on sidebar
+        assert screen.current_panel == "sidebar"
+
+        # Right arrow → table
+        await pilot.press("right")
+        await pilot.pause()
+        assert screen.current_panel == "table"
+
+        # Right arrow → search
+        await pilot.press("right")
+        await pilot.pause()
+        assert screen.current_panel == "search"
+
+        # Right arrow → sidebar (wraps)
+        await pilot.press("right")
+        await pilot.pause()
+        assert screen.current_panel == "sidebar"

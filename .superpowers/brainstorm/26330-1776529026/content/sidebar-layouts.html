@@ -1,0 +1,73 @@
+<h2>Sidebar Layout Options</h2>
+<p class="subtitle">How should the resource type sidebar integrate with the existing cluster screen?</p>
+
+<div class="options">
+  <div class="option" data-choice="left-sidebar" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Left Sidebar (Vertical List)</h3>
+      <p class="label">Current: Resource table spans full width</p>
+      <div class="mockup" style="margin-top: 12px;">
+        <div class="mockup-body" style="display: flex; gap: 10px;">
+          <div style="width: 150px; border: 1px solid #666; padding: 8px; background: #1a1a1a;">
+            <div style="font-weight: bold; margin-bottom: 8px; font-size: 12px;">RESOURCE TYPES</div>
+            <div style="font-size: 11px; line-height: 1.6;">
+              <div style="padding: 4px; cursor: pointer;">📦 Pods</div>
+              <div style="padding: 4px; cursor: pointer; background: #333;">🔌 Services</div>
+              <div style="padding: 4px; cursor: pointer;">⚙️ Deployments</div>
+              <div style="padding: 4px; cursor: pointer;">📋 ConfigMaps</div>
+            </div>
+          </div>
+          <div style="flex: 1; border: 1px solid #666; padding: 8px; background: #0a0a0a;">
+            <div style="font-size: 11px;">Resource list for selected type</div>
+          </div>
+        </div>
+      </div>
+      <p style="font-size: 12px; margin-top: 8px; color: #999;">Clean separation. Takes up horizontal space.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="top-tabs" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Top Tabs (Horizontal Tabs)</h3>
+      <p class="label">Switch resource type via tabs above table</p>
+      <div class="mockup" style="margin-top: 12px;">
+        <div class="mockup-body" style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; gap: 4px; border-bottom: 1px solid #666; font-size: 11px;">
+            <div style="padding: 6px 12px; border-bottom: 2px solid #0f0; cursor: pointer;">Pods</div>
+            <div style="padding: 6px 12px; cursor: pointer; color: #666;">Services</div>
+            <div style="padding: 6px 12px; cursor: pointer; color: #666;">Deployments</div>
+            <div style="padding: 6px 12px; cursor: pointer; color: #666;">ConfigMaps</div>
+          </div>
+          <div style="border: 1px solid #666; padding: 8px; background: #0a0a0a; height: 100px;">
+            <div style="font-size: 11px;">Resource list for "Pods"</div>
+          </div>
+        </div>
+      </div>
+      <p style="font-size: 12px; margin-top: 8px; color: #999;">Familiar pattern. Uses vertical space wisely.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="collapsible-sidebar" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Collapsible Left Sidebar</h3>
+      <p class="label">Toggle sidebar with keyboard (e.g., 's' key)</p>
+      <div class="mockup" style="margin-top: 12px;">
+        <div class="mockup-body" style="display: flex; gap: 10px;">
+          <div style="width: 40px; border-right: 1px solid #666; padding: 8px; background: #1a1a1a; text-align: center;">
+            <div style="font-size: 10px; line-height: 2;">📦</div>
+            <div style="font-size: 10px; line-height: 2;">🔌</div>
+            <div style="font-size: 10px; line-height: 2;">⚙️</div>
+            <div style="font-size: 10px; line-height: 2;">📋</div>
+          </div>
+          <div style="flex: 1; border: 1px solid #666; padding: 8px; background: #0a0a0a;">
+            <div style="font-size: 11px;">Full-width resource list</div>
+          </div>
+        </div>
+      </div>
+      <p style="font-size: 12px; margin-top: 8px; color: #999;">Minimalist. Expands when hovered or toggled.</p>
+    </div>
+  </div>
+</div>
