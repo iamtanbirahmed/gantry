@@ -331,6 +331,8 @@ class ClusterScreen(Screen):
         self.call_after_refresh(
             lambda: self.query_one("#resource-type-sidebar", ListView).focus()
         )
+        # Initialize panel focus to sidebar
+        self.current_panel = "sidebar"
 
     def _load_context_info(self) -> None:
         """Load current Kubernetes context and namespace."""
