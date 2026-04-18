@@ -620,6 +620,31 @@ class ClusterScreen(Screen):
         """Show the context/namespace picker modal."""
         self._load_contexts_for_picker_worker()
 
+    def action_focus_next_panel(self) -> None:
+        """Move focus to the next panel (right arrow).
+
+        Cycles: sidebar → table → search → sidebar
+        """
+        # Map current panel to next panel
+        next_panels = {
+            "sidebar": "table",
+            "table": "search",
+            "search": "sidebar",
+        }
+        next_panel = next_panels.get(self.current_panel, "sidebar")
+        self.current_panel = next_panel
+
+        # Move focus to the target panel widget
+        try:
+            if next_panel == "sidebar":
+                self.query_one("#resource-type-sidebar", ListView).focus()
+            elif next_panel == "table":
+                self.query_one("#resource-table", ResourceTable).focus()
+            elif next_panel == "search":
+                self.query_one("#search-input", SearchInput).focus()
+        except Exception as e:
+            logger.debug(f"Error focusing panel: {e}")
+
     @work(thread=True)
     def _load_contexts_for_picker_worker(self) -> None:
         """Load contexts in background for the picker modal."""
