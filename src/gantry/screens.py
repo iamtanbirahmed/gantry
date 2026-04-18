@@ -187,6 +187,11 @@ class ClusterScreen(Screen):
     """Screen for Kubernetes cluster exploration and management."""
 
     BINDINGS = [
+        # Panel navigation (replaces manual Tab usage for panels)
+        ("left", "focus_previous_panel", "Previous Panel"),
+        ("right", "focus_next_panel", "Next Panel"),
+
+        # Existing keybindings
         ("tab", "app.action_switch_screen", "Switch to Helm View"),
         ("slash", "focus_search", "Search"),
         ("c", "show_context_picker", "Pick Context"),
