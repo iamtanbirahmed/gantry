@@ -738,6 +738,11 @@ class HelmScreen(Screen):
     """Screen for Helm chart exploration and deployment."""
 
     BINDINGS = [
+        # Panel navigation (replaces manual Tab usage for panels)
+        ("left", "focus_previous_panel", "Previous Panel"),
+        ("right", "focus_next_panel", "Next Panel"),
+
+        # Existing keybindings
         ("tab", "app.action_switch_screen", "Switch to Cluster View"),
         Binding("slash", "focus_search", "Search", priority=True),
         ("c", "show_context_picker", "Pick Context"),
@@ -830,6 +835,8 @@ class HelmScreen(Screen):
     current_context = reactive("")
     connection_status = reactive("Loading repos...")
     current_namespace = reactive("default")
+    # Panel focus state: tracks which panel currently has focus
+    current_panel = reactive("sidebar")  # "sidebar", "table", or "search"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -862,6 +869,8 @@ class HelmScreen(Screen):
         """Initialize helm screen on mount."""
         self.title = "Gantry - Helm Orchestration"
         self._load_repos()
+        # Initialize panel focus to table (HelmScreen has no sidebar)
+        self.current_panel = "table"
 
     def _load_repos(self) -> None:
         """Load available Helm repositories."""
@@ -985,6 +994,54 @@ class HelmScreen(Screen):
         """Refresh the chart list."""
         if self._selected_repo:
             self._load_charts(self._selected_repo)
+
+    def action_focus_next_panel(self) -> None:
+        """Move focus to the next panel (right arrow).
+
+        Cycles: table → search → table (HelmScreen has no sidebar)
+        """
+        # Map current panel to next panel
+        # Note: HelmScreen only has table and search panels, no sidebar
+        next_panels = {
+            "sidebar": "table",  # Fallback to table if somehow in sidebar state
+            "table": "search",
+            "search": "table",
+        }
+        next_panel = next_panels.get(self.current_panel, "table")
+        self.current_panel = next_panel
+
+        # Move focus to the target panel widget
+        try:
+            if next_panel == "table":
+                self.query_one("#chart-table", ResourceTable).focus()
+            elif next_panel == "search":
+                self.query_one("#search-input", SearchInput).focus()
+        except Exception as e:
+            logger.debug(f"Error focusing panel: {e}")
+
+    def action_focus_previous_panel(self) -> None:
+        """Move focus to the previous panel (left arrow).
+
+        Cycles: search → table → search (HelmScreen has no sidebar)
+        """
+        # Map current panel to previous panel
+        # Note: HelmScreen only has table and search panels, no sidebar
+        prev_panels = {
+            "sidebar": "search",  # Fallback to search if somehow in sidebar state
+            "table": "search",
+            "search": "table",
+        }
+        prev_panel = prev_panels.get(self.current_panel, "search")
+        self.current_panel = prev_panel
+
+        # Move focus to the target panel widget
+        try:
+            if prev_panel == "table":
+                self.query_one("#chart-table", ResourceTable).focus()
+            elif prev_panel == "search":
+                self.query_one("#search-input", SearchInput).focus()
+        except Exception as e:
+            logger.debug(f"Error focusing panel: {e}")
 
     def action_show_context_picker(self) -> None:
         """Show the context/namespace picker modal."""
