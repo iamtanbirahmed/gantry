@@ -4,7 +4,7 @@ import logging
 from typing import Any, Dict, List, Optional
 from textual.screen import Screen, ModalScreen
 from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
-from textual.widgets import Label, Static, Button, OptionList, Input, TextArea
+from textual.widgets import Label, Static, Button, OptionList, Input, TextArea, ListView, ListItem
 from textual.widgets.option_list import Option
 from textual.widget import Widget
 from textual.binding import Binding
@@ -203,34 +203,32 @@ class ClusterScreen(Screen):
         color: $text;
     }
 
-    #header-container {
-        height: 3;
-        border: solid $accent;
-        padding: 0 1;
-    }
-
-    #resource-type-label {
-        height: 1;
-        width: 100%;
-        content-align: left middle;
-        text-style: bold;
-    }
-
-    #resource-type-selector {
-        height: 1;
-        width: 100%;
-    }
-
-    #resource-type-selector Button {
-        margin-right: 1;
-    }
-
-    #resource-type-selector Button:focus {
-        background: $accent;
-    }
-
-    #body-container {
+    #main-container {
         height: 1fr;
+        width: 100%;
+    }
+
+    #resource-type-sidebar {
+        width: 20;
+        height: 100%;
+        border-right: solid $accent;
+        background: $panel;
+        padding: 1 0;
+    }
+
+    #resource-type-sidebar > ListItem {
+        padding: 0 1;
+        height: 1;
+    }
+
+    #resource-type-sidebar > ListItem > Label {
+        color: $text;
+        width: 100%;
+    }
+
+    #content-area {
+        height: 100%;
+        width: 1fr;
     }
 
     ResourceTable {
@@ -276,6 +274,8 @@ class ClusterScreen(Screen):
     }
     """
 
+    _RESOURCE_TYPES = ["Pods", "Services", "Deployments", "ConfigMaps"]
+
     current_resource_type = reactive("Pods", init=False)
     current_namespace = reactive("default")
     current_context = reactive("N/A")
@@ -295,19 +295,19 @@ class ClusterScreen(Screen):
 
     def compose(self):
         """Compose the cluster screen."""
-        # Header with resource type selector
-        with Vertical(id="header-container"):
-            yield Label("Resource Type:", id="resource-type-label")
-            with Horizontal(id="resource-type-selector"):
-                yield Button("Pods", id="btn-pods", variant="primary")
-                yield Button("Services", id="btn-services")
-                yield Button("Deployments", id="btn-deployments")
-                yield Button("ConfigMaps", id="btn-configmaps")
-
-        # Body with resource table and search
-        with Vertical(id="body-container"):
-            yield ResourceTable(id="resource-table")
-            yield SearchInput(id="search-input")
+        # Main container with sidebar and content
+        with Horizontal(id="main-container"):
+            yield ListView(
+                ListItem(Label("Pods")),
+                ListItem(Label("Services")),
+                ListItem(Label("Deployments")),
+                ListItem(Label("ConfigMaps")),
+                id="resource-type-sidebar",
+                initial_index=0,
+            )
+            with Vertical(id="content-area"):
+                yield ResourceTable(id="resource-table")
+                yield SearchInput(id="search-input")
 
         # Detail panel for descriptions and logs
         yield Label(id="detail-panel")
@@ -320,6 +320,10 @@ class ClusterScreen(Screen):
         self.title = "Gantry - Cluster Management"
         # Load initial context and namespace
         self._load_context_info()
+        # Give focus to the sidebar
+        self.call_after_refresh(
+            lambda: self.query_one("#resource-type-sidebar", ListView).focus()
+        )
 
     def _load_context_info(self) -> None:
         """Load current Kubernetes context and namespace."""
@@ -469,42 +473,16 @@ class ClusterScreen(Screen):
         # Store resource data for actions like describe and logs
         self._resource_data = resources
 
-    def on_button_pressed(self, event) -> None:
-        """Handle button presses for resource type selection."""
-        button_id = event.button.id
-        if button_id == "btn-pods":
-            self.current_resource_type = "Pods"
-        elif button_id == "btn-services":
-            self.current_resource_type = "Services"
-        elif button_id == "btn-deployments":
-            self.current_resource_type = "Deployments"
-        elif button_id == "btn-configmaps":
-            self.current_resource_type = "ConfigMaps"
-
-        # Update button styles (reactive watcher handles refresh)
-        self._update_button_styles()
-
-    def _update_button_styles(self) -> None:
-        """Update button styles based on current resource type."""
-        buttons = {
-            "Pods": "btn-pods",
-            "Services": "btn-services",
-            "Deployments": "btn-deployments",
-            "ConfigMaps": "btn-configmaps",
-        }
-
-        for resource_type, btn_id in buttons.items():
-            btn = self.query_one(f"#{btn_id}", Button)
-            if resource_type == self.current_resource_type:
-                btn.variant = "primary"
-            else:
-                btn.variant = "default"
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        """Handle resource type selection from sidebar."""
+        if event.list_view.id == "resource-type-sidebar":
+            self.current_resource_type = self._RESOURCE_TYPES[event.index]
 
     def action_focus_search(self) -> None:
         """Focus on the search input."""
         search_input: SearchInput = self.query_one("#search-input", SearchInput)
         search_input.add_class("show")
-        search_input.focus()
+        self.call_after_refresh(search_input.focus)
 
     def action_describe_resource(self) -> None:
         """Describe the selected resource."""
@@ -698,7 +676,7 @@ class HelmScreen(Screen):
 
     BINDINGS = [
         ("tab", "app.action_switch_screen", "Switch to Cluster View"),
-        ("slash", "focus_search", "Search"),
+        Binding("slash", "focus_search", "Search", priority=True),
         ("c", "show_context_picker", "Pick Context"),
         ("enter", "execute_action('deploy')", "Deploy Chart"),
         ("r", "refresh_charts", "Refresh"),
@@ -938,7 +916,7 @@ class HelmScreen(Screen):
         """Focus on the search input."""
         search_input: SearchInput = self.query_one("#search-input", SearchInput)
         search_input.add_class("show")
-        search_input.focus()
+        self.call_after_refresh(search_input.focus)
 
     def action_refresh_charts(self) -> None:
         """Refresh the chart list."""

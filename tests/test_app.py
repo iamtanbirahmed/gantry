@@ -1,6 +1,7 @@
 """Tests for the Gantry app shell and screen switching."""
 
 import pytest
+from textual.widgets import ListView
 
 from gantry.app import GantryApp
 from gantry.screens import ClusterScreen, HelmScreen
@@ -52,7 +53,7 @@ def test_helm_screen_created():
 def test_cluster_screen_has_bindings():
     """Test that ClusterScreen has required keybindings."""
     screen = ClusterScreen()
-    binding_keys = [binding[0] for binding in screen.BINDINGS]
+    binding_keys = [binding[0] if isinstance(binding, tuple) else binding.key for binding in screen.BINDINGS]
     assert "tab" in binding_keys
     assert "q" in binding_keys
 
@@ -60,7 +61,7 @@ def test_cluster_screen_has_bindings():
 def test_helm_screen_has_bindings():
     """Test that HelmScreen has required keybindings."""
     screen = HelmScreen()
-    binding_keys = [binding[0] for binding in screen.BINDINGS]
+    binding_keys = [binding[0] if isinstance(binding, tuple) else binding.key for binding in screen.BINDINGS]
     assert "tab" in binding_keys
     assert "q" in binding_keys
 
@@ -107,3 +108,36 @@ async def test_tab_switches_back_to_cluster_screen():
         await pilot.press("tab")
         await pilot.pause()
         assert isinstance(app.screen, ClusterScreen)
+
+
+def test_cluster_screen_has_sidebar():
+    """Test that ClusterScreen has a resource type sidebar."""
+    screen = ClusterScreen()
+    # We can't test the full DOM without mounting, but we can check
+    # that the sidebar list is defined in the class
+    assert hasattr(screen, "_RESOURCE_TYPES")
+    assert screen._RESOURCE_TYPES == ["Pods", "Services", "Deployments", "ConfigMaps"]
+
+
+@pytest.mark.asyncio
+async def test_sidebar_default_selection():
+    """Test that the sidebar defaults to Pods on load."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+        assert screen.current_resource_type == "Pods"
+
+
+@pytest.mark.asyncio
+async def test_sidebar_selection_changes_resource_type():
+    """Test that navigating the sidebar changes the resource type."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+        # Arrow down to Services, press Enter
+        await pilot.press("down")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert screen.current_resource_type == "Services"
