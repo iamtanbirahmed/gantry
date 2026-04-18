@@ -645,6 +645,31 @@ class ClusterScreen(Screen):
         except Exception as e:
             logger.debug(f"Error focusing panel: {e}")
 
+    def action_focus_previous_panel(self) -> None:
+        """Move focus to the previous panel (left arrow).
+
+        Cycles: search ← table ← sidebar ← search
+        """
+        # Map current panel to previous panel
+        prev_panels = {
+            "sidebar": "search",
+            "table": "sidebar",
+            "search": "table",
+        }
+        prev_panel = prev_panels.get(self.current_panel, "sidebar")
+        self.current_panel = prev_panel
+
+        # Move focus to the target panel widget
+        try:
+            if prev_panel == "sidebar":
+                self.query_one("#resource-type-sidebar", ListView).focus()
+            elif prev_panel == "table":
+                self.query_one("#resource-table", ResourceTable).focus()
+            elif prev_panel == "search":
+                self.query_one("#search-input", SearchInput).focus()
+        except Exception as e:
+            logger.debug(f"Error focusing panel: {e}")
+
     @work(thread=True)
     def _load_contexts_for_picker_worker(self) -> None:
         """Load contexts in background for the picker modal."""
