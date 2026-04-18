@@ -198,3 +198,34 @@ async def test_panel_navigation_left_arrow():
         await pilot.press("left")
         await pilot.pause()
         assert screen.current_panel == "search"
+
+
+@pytest.mark.asyncio
+async def test_sidebar_up_down_updates_resources():
+    """Test that navigating sidebar with arrows immediately updates resource type.
+
+    Previously, Enter was required to apply the selection. Now up/down
+    navigation immediately triggers a resource type change and fetch.
+    """
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+
+        # Start on Pods
+        assert screen.current_resource_type == "Pods"
+
+        # Down arrow to Services
+        await pilot.press("down")
+        await pilot.pause()
+        assert screen.current_resource_type == "Services"
+
+        # Down arrow to Deployments
+        await pilot.press("down")
+        await pilot.pause()
+        assert screen.current_resource_type == "Deployments"
+
+        # Up arrow back to Services
+        await pilot.press("up")
+        await pilot.pause()
+        assert screen.current_resource_type == "Services"
