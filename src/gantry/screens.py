@@ -542,9 +542,7 @@ class ClusterScreen(Screen):
 
     def _apply_describe_result(self, description: str, status: str) -> None:
         """Apply describe result on main thread."""
-        self._display_detail_panel(description)
-        self.connection_status = status
-        self._update_status_bar()
+        self._show_detail_panel("DESCRIBE", description)
 
     def _format_resource_description(self, resource_type: str, result: Dict[str, Any]) -> str:
         """Format resource description for display."""

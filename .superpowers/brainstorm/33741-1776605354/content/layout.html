@@ -1,0 +1,143 @@
+<h2>Right Panel Layout Options</h2>
+<p class="subtitle">Choose how the detail/logs panel appears on the Cluster screen</p>
+
+<style>
+  .tui {
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    background: #1e1e2e;
+    color: #cdd6f4;
+    border-radius: 6px;
+    padding: 8px;
+    margin-bottom: 8px;
+    line-height: 1.4;
+  }
+  .tui-row { display: flex; gap: 0; }
+  .tui-sidebar { background: #181825; color: #89b4fa; padding: 4px 6px; min-width: 80px; border-right: 1px solid #89b4fa; }
+  .tui-table { background: #1e1e2e; padding: 4px 6px; flex: 1; }
+  .tui-right { background: #181825; color: #a6e3a1; padding: 4px 6px; border-left: 1px solid #89b4fa; }
+  .tui-bottom { background: #181825; color: #a6e3a1; padding: 4px 6px; border-top: 1px solid #89b4fa; width: 100%; }
+  .tui-status { background: #313244; color: #bac2de; padding: 2px 6px; font-size: 11px; }
+  .tui-header { color: #89b4fa; border-bottom: 1px solid #45475a; margin-bottom: 4px; }
+  .tui-row-item { color: #cdd6f4; }
+  .tui-cursor { background: #45475a; }
+  .tui-dim { color: #6c7086; font-style: italic; }
+  .tui-label { background: #313244; color: #89b4fa; padding: 1px 4px; font-size: 10px; }
+</style>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Toggle-in Right Panel (hidden by default)</h3>
+      <p>Panel is hidden until <kbd>d</kbd> or <kbd>l</kbd> is pressed. Appears on the right, pushing the table narrower. Dismissed with <kbd>Escape</kbd>.</p>
+      <div class="tui">
+        <div class="tui-row">
+          <div class="tui-sidebar">
+            <div class="tui-header">Resources</div>
+            <div>▶ Pods</div>
+            <div class="tui-dim">  Services</div>
+            <div class="tui-dim">  Deploys</div>
+          </div>
+          <div class="tui-table">
+            <div class="tui-header">NAME&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;STATUS&nbsp;&nbsp;AGE</div>
+            <div class="tui-cursor">nginx-abc&nbsp;&nbsp;Running&nbsp;2d</div>
+            <div>redis-xyz&nbsp;&nbsp;Running&nbsp;5h</div>
+          </div>
+          <div class="tui-right" style="width:160px">
+            <div class="tui-label">DESCRIBE</div>
+            <div style="margin-top:4px;font-size:11px">
+              <div style="color:#89b4fa">Name:</div> nginx-abc<br>
+              <div style="color:#89b4fa">Status:</div> Running<br>
+              <div style="color:#89b4fa">Node:</div> worker-1<br>
+              <div style="color:#89b4fa">IP:</div> 10.0.0.5<br>
+              <div style="color:#89b4fa">Age:</div> 2d<br>
+              <div style="color:#6c7086; margin-top:6px">─── Containers ───</div>
+              <div>nginx: Ready ✓</div>
+            </div>
+          </div>
+        </div>
+        <div class="tui-status">default | production | ESC to close panel</div>
+      </div>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Clean default view</li><li>Full table width when not inspecting</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Layout shifts when toggled</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Persistent Right Panel (always visible)</h3>
+      <p>Right panel always shown at ~40% width. Shows a placeholder when nothing is selected. Updates immediately when cursor moves (live preview).</p>
+      <div class="tui">
+        <div class="tui-row">
+          <div class="tui-sidebar">
+            <div class="tui-header">Resources</div>
+            <div>▶ Pods</div>
+            <div class="tui-dim">  Services</div>
+            <div class="tui-dim">  Deploys</div>
+          </div>
+          <div class="tui-table">
+            <div class="tui-header">NAME&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;STATUS</div>
+            <div class="tui-cursor">nginx-abc&nbsp;&nbsp;Running</div>
+            <div>redis-xyz&nbsp;&nbsp;Running</div>
+          </div>
+          <div class="tui-right" style="width:170px">
+            <div class="tui-label">DESCRIBE</div>
+            <div style="margin-top:4px;font-size:11px">
+              <div style="color:#89b4fa">Name:</div> nginx-abc<br>
+              <div style="color:#89b4fa">Status:</div> Running<br>
+              <div style="color:#89b4fa">IP:</div> 10.0.0.5<br>
+              <div style="color:#6c7086; margin-top:6px">─── Containers ───</div>
+              <div>nginx: Ready ✓</div>
+            </div>
+          </div>
+        </div>
+        <div class="tui-status">default | production | d: describe · l: logs</div>
+      </div>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>No layout shift</li><li>Can show live preview as you arrow through rows</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Table always narrower</li><li>Panel empty on load</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Split View: Toggle with Scrollable Panel</h3>
+      <p>Like option A (toggle), but the right panel is a scrollable <code>TextArea</code>/<code>RichLog</code> widget that can be focused and navigated with arrow keys — ideal for long logs.</p>
+      <div class="tui">
+        <div class="tui-row">
+          <div class="tui-sidebar">
+            <div class="tui-header">Resources</div>
+            <div>▶ Pods</div>
+            <div class="tui-dim">  Services</div>
+          </div>
+          <div class="tui-table">
+            <div class="tui-header">NAME&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;STATUS</div>
+            <div class="tui-cursor">nginx-abc&nbsp;&nbsp;Running</div>
+            <div>redis-xyz&nbsp;&nbsp;Running</div>
+          </div>
+          <div class="tui-right" style="width:165px">
+            <div class="tui-label" style="background:#313244;color:#f38ba8">LOGS ▲▼ scroll</div>
+            <div style="margin-top:4px;font-size:10px;color:#a6e3a1">
+              2024-01-15 10:01:23 INFO starting...<br>
+              2024-01-15 10:01:24 INFO server ready<br>
+              <span style="color:#f38ba8">2024-01-15 10:01:25 WARN timeout</span><br>
+              2024-01-15 10:01:26 INFO retry ok<br>
+              <span style="color:#6c7086">▼ more below</span>
+            </div>
+          </div>
+        </div>
+        <div class="tui-status">default | production | ←→ panels · ESC close</div>
+      </div>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Scrollable logs/details</li><li>Focusable panel (arrow keys work)</li><li>Full table width by default</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>More complex panel navigation</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>
