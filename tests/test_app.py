@@ -1,6 +1,7 @@
 """Tests for the Gantry app shell and screen switching."""
 
 import pytest
+from textual.containers import VerticalScroll
 from textual.widgets import ListView
 
 from gantry.app import GantryApp
@@ -218,3 +219,61 @@ async def test_sidebar_up_down_updates_resources():
         await pilot.press("up")
         await pilot.pause()
         assert screen.current_resource_type == "Services"
+
+
+@pytest.mark.asyncio
+async def test_detail_panel_hidden_on_mount():
+    """Detail panel should be hidden by default."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+        # Check that detail_panel_open is False
+        assert screen.detail_panel_open is False
+        # Check that detail panel has the hidden class
+        detail_panel = screen.query_one("#detail-panel", VerticalScroll)
+        assert "show" not in detail_panel.classes
+
+
+@pytest.mark.asyncio
+async def test_panel_navigation_with_detail_open():
+    """Panel cycle should include detail when open."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+
+        # Open detail panel
+        screen.detail_panel_open = True
+        screen.query_one("#detail-panel", VerticalScroll).add_class("show")
+
+        # Cycle: sidebar -> table -> detail -> sidebar
+        screen.action_focus_next_panel()
+        assert screen.current_panel == "table"
+
+        screen.action_focus_next_panel()
+        assert screen.current_panel == "detail"
+
+        screen.action_focus_next_panel()
+        assert screen.current_panel == "sidebar"
+
+
+@pytest.mark.asyncio
+async def test_escape_closes_detail_panel():
+    """Pressing Escape should close the detail panel."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+
+        # Manually open the detail panel
+        screen.detail_panel_open = True
+        screen.query_one("#detail-panel", VerticalScroll).add_class("show")
+
+        # Simulate Escape key
+        screen.action_close_detail_panel()
+
+        # Verify panel is closed
+        assert screen.detail_panel_open is False
+        detail_panel = screen.query_one("#detail-panel", VerticalScroll)
+        assert "show" not in detail_panel.classes
