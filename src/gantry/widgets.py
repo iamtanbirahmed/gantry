@@ -260,3 +260,59 @@ class StatusBar(Static):
             self.add_class("success")
             self.remove_class("error")
         self.refresh()
+
+
+class KeybindingsBar(Static):
+    """Context-aware keybindings bar displaying abbreviated key hints."""
+
+    CSS = """
+    KeybindingsBar {
+        height: 1;
+        border: solid $accent;
+        padding: 0 1;
+        background: $panel;
+        color: $text;
+    }
+    """
+
+    def __init__(self, *args, **kwargs):
+        """Initialize the keybindings bar with default state."""
+        super().__init__(*args, **kwargs)
+        self.screen_type = "cluster"  # "cluster" or "helm"
+        self.current_panel = "sidebar"  # "sidebar", "table", "detail", "search"
+        self.detail_panel_open = False
+        self.search_active = False
+
+    def update_context(self, screen_type: str, current_panel: str, detail_open: bool, search_active: bool) -> None:
+        """Update the context state and refresh the display.
+
+        Args:
+            screen_type: "cluster" or "helm"
+            current_panel: "sidebar", "table", "detail", or "search"
+            detail_open: whether detail panel is open
+            search_active: whether search is active
+        """
+        self.screen_type = screen_type
+        self.current_panel = current_panel
+        self.detail_panel_open = detail_open
+        self.search_active = search_active
+        self.refresh()
+
+    def render(self) -> str:
+        """Render abbreviated keybindings based on current context."""
+        # Case 1: Detail panel open
+        if self.detail_panel_open:
+            return "← Back | → Fwd | Esc Close | ↑↓ Scroll"
+
+        # Case 2: Search active
+        if self.search_active:
+            return "Esc Cancel | ↵ Select"
+
+        # Case 3 & 4: Normal state (depends on screen type)
+        if self.screen_type == "cluster":
+            return "←→ Nav | d Desc | l Logs | r Refr | c Ctx | / Srch | Tab Helm | q Quit"
+        elif self.screen_type == "helm":
+            return "←→ Nav | ↵ Deploy | r Refr | c Ctx | / Srch | Tab Cluster | q Quit"
+
+        # Fallback (should not reach here)
+        return ""
