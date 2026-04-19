@@ -585,17 +585,6 @@ class ClusterScreen(Screen):
 
         return "\n".join(lines)
 
-    def _display_detail_panel(self, content: str) -> None:
-        """Display content in the detail panel."""
-        try:
-            detail_panel = self.query_one("#detail-panel", VerticalScroll)
-            detail_content = self.query_one("#detail-panel-content", Static)
-            detail_content.update(content)
-            detail_panel.add_class("show")
-        except Exception:
-            # If detail panel is not available, just update status bar
-            pass
-
     def _show_detail_panel(self, title: str, content: str) -> None:
         """Show the detail panel with the given title and content.
 
