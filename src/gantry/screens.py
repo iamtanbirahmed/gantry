@@ -192,6 +192,7 @@ class ClusterScreen(Screen):
         ("right", "focus_next_panel", "Next Panel"),
 
         # Existing keybindings
+        ("escape", "close_detail_panel", "Close Panel"),
         ("tab", "app.action_switch_screen", "Switch to Helm View"),
         ("slash", "focus_search", "Search"),
         ("c", "show_context_picker", "Pick Context"),
@@ -758,6 +759,11 @@ class ClusterScreen(Screen):
                 self.query_one("#detail-panel", VerticalScroll).focus()
         except Exception as e:
             logger.debug(f"Error focusing panel: {e}")
+
+    def action_close_detail_panel(self) -> None:
+        """Close the detail panel (Escape key handler)."""
+        if self.detail_panel_open:
+            self._close_detail_panel()
 
     @work(thread=True)
     def _load_contexts_for_picker_worker(self) -> None:
