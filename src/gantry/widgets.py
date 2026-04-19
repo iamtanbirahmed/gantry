@@ -276,7 +276,14 @@ class KeybindingsBar(Static):
     """
 
     def __init__(self, *args, **kwargs):
-        """Initialize the keybindings bar with default state."""
+        """Initialize the keybindings bar with default state.
+
+        State attributes:
+        - screen_type: Currently displayed screen ("cluster" or "helm")
+        - current_panel: Focused panel (tracked for future context-aware hints)
+        - detail_panel_open: Whether detail panel is open
+        - search_active: Whether search is active
+        """
         super().__init__(*args, **kwargs)
         self.screen_type = "cluster"  # "cluster" or "helm"
         self.current_panel = "sidebar"  # "sidebar", "table", "detail", "search"
@@ -287,8 +294,8 @@ class KeybindingsBar(Static):
         """Update the context state and refresh the display.
 
         Args:
-            screen_type: "cluster" or "helm"
-            current_panel: "sidebar", "table", "detail", or "search"
+            screen_type: "cluster" or "helm" (determines available bindings)
+            current_panel: "sidebar", "table", "detail", or "search" (tracked for future context-aware enhancements)
             detail_open: whether detail panel is open
             search_active: whether search is active
         """
