@@ -258,18 +258,23 @@ class ClusterScreen(Screen):
     }
 
     #detail-panel {
-        height: auto;
-        border: solid $accent;
+        width: 40%;
+        height: 100%;
+        border-left: solid $accent;
+        background: $panel;
+        padding: 0;
         display: none;
-        background: $boost;
-        color: $text;
-        padding: 1;
-        margin: 1 0;
     }
 
     #detail-panel.show {
         display: block;
-        height: auto;
+    }
+
+    #detail-panel > Static {
+        width: 100%;
+        height: 100%;
+        padding: 1;
+        border: none;
     }
 
     StatusBar {
