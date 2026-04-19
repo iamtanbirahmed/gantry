@@ -283,8 +283,8 @@ def test_keybindings_bar_detail_panel_open():
     """KeybindingsBar should show detail panel hints when detail is open."""
     bar = KeybindingsBar()
     bar.update_context("cluster", "detail", detail_open=True, search_active=False)
-    
-    output = bar.render()
+
+    output = bar._build_text()
     assert "← Back" in output
     assert "Esc Close" in output
     assert "↑↓ Scroll" in output
@@ -295,8 +295,8 @@ def test_keybindings_bar_search_active():
     """KeybindingsBar should show search hints when search is active."""
     bar = KeybindingsBar()
     bar.update_context("cluster", "sidebar", detail_open=False, search_active=True)
-    
-    output = bar.render()
+
+    output = bar._build_text()
     assert "Esc Cancel" in output
     assert "↵ Select" in output
     assert "Desc" not in output  # Should NOT show normal cluster bindings
@@ -306,8 +306,8 @@ def test_keybindings_bar_cluster_normal():
     """KeybindingsBar should show cluster screen bindings in normal state."""
     bar = KeybindingsBar()
     bar.update_context("cluster", "table", detail_open=False, search_active=False)
-    
-    output = bar.render()
+
+    output = bar._build_text()
     assert "←→ Nav" in output
     assert "d Desc" in output
     assert "l Logs" in output
@@ -322,8 +322,8 @@ def test_keybindings_bar_helm_normal():
     """KeybindingsBar should show helm screen bindings in normal state."""
     bar = KeybindingsBar()
     bar.update_context("helm", "table", detail_open=False, search_active=False)
-    
-    output = bar.render()
+
+    output = bar._build_text()
     assert "←→ Nav" in output
     assert "↵ Deploy" in output
     assert "r Refr" in output

@@ -289,6 +289,8 @@ class KeybindingsBar(Static):
         self.current_panel = "sidebar"  # "sidebar", "table", "detail", "search"
         self.detail_panel_open = False
         self.search_active = False
+        # Render initial content immediately so Static has something to show on first paint
+        self.update(self._build_text())
 
     def update_context(self, screen_type: str, current_panel: str, detail_open: bool, search_active: bool) -> None:
         """Update the context state and refresh the display.
@@ -303,10 +305,10 @@ class KeybindingsBar(Static):
         self.current_panel = current_panel
         self.detail_panel_open = detail_open
         self.search_active = search_active
-        self.refresh()
+        self.update(self._build_text())
 
-    def render(self) -> str:
-        """Render abbreviated keybindings based on current context."""
+    def _build_text(self) -> str:
+        """Build abbreviated keybindings string based on current context."""
         # Case 1: Detail panel open
         if self.detail_panel_open:
             return "← Back | → Fwd | Esc Close | ↑↓ Scroll"
