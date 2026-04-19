@@ -14,7 +14,7 @@ from textual.reactive import reactive
 import json
 
 from gantry import k8s, state
-from gantry.widgets import ResourceTable, SearchInput, StatusBar
+from gantry.widgets import ResourceTable, SearchInput, StatusBar, KeybindingsBar
 
 logger = logging.getLogger(__name__)
 
@@ -339,6 +339,9 @@ class ClusterScreen(Screen):
         # Status bar
         yield StatusBar(id="status-bar")
 
+        # Keybindings bar
+        yield KeybindingsBar(id="keybindings-bar")
+
     def on_mount(self) -> None:
         """Initialize cluster screen on mount."""
         self.title = "Gantry - Cluster Management"
@@ -350,6 +353,10 @@ class ClusterScreen(Screen):
         )
         # Initialize panel focus to sidebar
         self.current_panel = "sidebar"
+
+        # Initialize keybindings bar
+        self.keybindings_bar = self.query_one("#keybindings-bar", KeybindingsBar)
+        self.keybindings_bar.update_context("cluster", "sidebar", False, False)
 
     def _load_context_info(self) -> None:
         """Load current Kubernetes context and namespace."""
@@ -815,6 +822,20 @@ class ClusterScreen(Screen):
         """React to resource type changes."""
         self._refresh_resources()
 
+    def watch_current_panel(self, new_panel: str) -> None:
+        """React to current_panel changes."""
+        if hasattr(self, 'keybindings_bar'):
+            self.keybindings_bar.update_context(
+                "cluster", new_panel, self.detail_panel_open, False
+            )
+
+    def watch_detail_panel_open(self, new_open: bool) -> None:
+        """React to detail_panel_open changes."""
+        if hasattr(self, 'keybindings_bar'):
+            self.keybindings_bar.update_context(
+                "cluster", self.current_panel, new_open, False
+            )
+
     def on_search_input_search_changed(self, message: SearchInput.SearchChanged) -> None:
         """Handle search input changes and filter the table."""
         table: ResourceTable = self.query_one("#resource-table", ResourceTable)
@@ -916,6 +937,15 @@ class HelmScreen(Screen):
         border: solid $accent;
         padding: 0 1;
     }
+
+    #keybindings-bar {
+        height: 1;
+        border: solid $accent;
+        border-top: none;
+        padding: 0 1;
+        background: $panel;
+        color: $text;
+    }
     """
 
     current_repo = reactive("Select a repo")
@@ -952,12 +982,19 @@ class HelmScreen(Screen):
         # Status bar
         yield StatusBar(id="status-bar")
 
+        # Keybindings bar
+        yield KeybindingsBar(id="keybindings-bar")
+
     def on_mount(self) -> None:
         """Initialize helm screen on mount."""
         self.title = "Gantry - Helm Orchestration"
         self._load_repos()
         # Initialize panel focus to table (HelmScreen has no sidebar)
         self.current_panel = "table"
+
+        # Initialize keybindings bar (helm screen has no detail panel or search)
+        self.keybindings_bar = self.query_one("#keybindings-bar", KeybindingsBar)
+        self.keybindings_bar.update_context("helm", "table", False, False)
 
     def _load_repos(self) -> None:
         """Load available Helm repositories."""
@@ -1040,6 +1077,13 @@ class HelmScreen(Screen):
         except Exception:
             # Status bar not mounted yet, skip update
             pass
+
+    def watch_current_panel(self, new_panel: str) -> None:
+        """React to current_panel changes."""
+        if hasattr(self, 'keybindings_bar'):
+            self.keybindings_bar.update_context(
+                "helm", new_panel, False, False
+            )
 
     def on_button_pressed(self, event) -> None:
         """Handle button presses for repo selection."""
