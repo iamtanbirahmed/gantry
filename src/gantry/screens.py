@@ -3,7 +3,7 @@
 import logging
 from typing import Any, Dict, List, Optional
 from textual.screen import Screen, ModalScreen
-from textual.containers import Container, Vertical, Horizontal, ScrollableContainer
+from textual.containers import Container, Vertical, Horizontal, ScrollableContainer, VerticalScroll
 from textual.widgets import Label, Static, Button, OptionList, Input, TextArea, ListView, ListItem
 from textual.widgets.option_list import Option
 from textual.widget import Widget
@@ -302,7 +302,7 @@ class ClusterScreen(Screen):
 
     def compose(self):
         """Compose the cluster screen."""
-        # Main container with sidebar and content
+        # Main container with sidebar, content, and detail panel
         with Horizontal(id="main-container"):
             yield ListView(
                 ListItem(Label("Pods")),
@@ -316,8 +316,9 @@ class ClusterScreen(Screen):
                 yield ResourceTable(id="resource-table")
                 yield SearchInput(id="search-input")
 
-        # Detail panel for descriptions and logs
-        yield Label(id="detail-panel")
+            # Detail panel for descriptions and logs (right sidebar)
+            with VerticalScroll(id="detail-panel"):
+                yield Static(id="detail-panel-content")
 
         # Status bar
         yield StatusBar(id="status-bar")
