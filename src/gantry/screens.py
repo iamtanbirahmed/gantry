@@ -283,6 +283,15 @@ class ClusterScreen(Screen):
         border: solid $accent;
         padding: 0 1;
     }
+
+    #keybindings-bar {
+        height: 1;
+        border: solid $accent;
+        border-top: none;
+        padding: 0 1;
+        background: $panel;
+        color: $text;
+    }
     """
 
     _RESOURCE_TYPES = ["Pods", "Services", "Deployments", "ConfigMaps"]
