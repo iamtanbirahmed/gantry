@@ -694,14 +694,23 @@ class ClusterScreen(Screen):
     def action_focus_next_panel(self) -> None:
         """Move focus to the next panel (right arrow).
 
-        Cycles: sidebar → table → search → sidebar
+        Cycles: sidebar → table → detail (if open) → sidebar
+        If detail is open, cycles through: sidebar → table → detail → sidebar
+        Search is skipped (commented out for now).
         """
-        # Map current panel to next panel
-        next_panels = {
-            "sidebar": "table",
-            "table": "search",
-            "search": "sidebar",
-        }
+        # If detail panel is open, include it in the cycle
+        if self.detail_panel_open:
+            next_panels = {
+                "sidebar": "table",
+                "table": "detail",
+                "detail": "sidebar",
+            }
+        else:
+            next_panels = {
+                "sidebar": "table",
+                "table": "sidebar",
+            }
+
         next_panel = next_panels.get(self.current_panel, "sidebar")
         self.current_panel = next_panel
 
@@ -711,22 +720,31 @@ class ClusterScreen(Screen):
                 self.query_one("#resource-type-sidebar", ListView).focus()
             elif next_panel == "table":
                 self.query_one("#resource-table", ResourceTable).focus()
-            elif next_panel == "search":
-                self.query_one("#search-input", SearchInput).focus()
+            elif next_panel == "detail":
+                self.query_one("#detail-panel", VerticalScroll).focus()
         except Exception as e:
             logger.debug(f"Error focusing panel: {e}")
 
     def action_focus_previous_panel(self) -> None:
         """Move focus to the previous panel (left arrow).
 
-        Cycles: search ← table ← sidebar ← search
+        Cycles: sidebar ← detail (if open) ← table ← sidebar
+        If detail is open, cycles through: sidebar ← detail ← table ← sidebar
+        Search is skipped (commented out for now).
         """
-        # Map current panel to previous panel
-        prev_panels = {
-            "sidebar": "search",
-            "table": "sidebar",
-            "search": "table",
-        }
+        # If detail panel is open, include it in the cycle
+        if self.detail_panel_open:
+            prev_panels = {
+                "sidebar": "detail",
+                "table": "sidebar",
+                "detail": "table",
+            }
+        else:
+            prev_panels = {
+                "sidebar": "table",
+                "table": "sidebar",
+            }
+
         prev_panel = prev_panels.get(self.current_panel, "sidebar")
         self.current_panel = prev_panel
 
@@ -736,8 +754,8 @@ class ClusterScreen(Screen):
                 self.query_one("#resource-type-sidebar", ListView).focus()
             elif prev_panel == "table":
                 self.query_one("#resource-table", ResourceTable).focus()
-            elif prev_panel == "search":
-                self.query_one("#search-input", SearchInput).focus()
+            elif prev_panel == "detail":
+                self.query_one("#detail-panel", VerticalScroll).focus()
         except Exception as e:
             logger.debug(f"Error focusing panel: {e}")
 

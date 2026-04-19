@@ -159,12 +159,7 @@ async def test_panel_navigation_right_arrow():
         await pilot.pause()
         assert screen.current_panel == "table"
 
-        # Right arrow → search
-        await pilot.press("right")
-        await pilot.pause()
-        assert screen.current_panel == "search"
-
-        # Right arrow → sidebar (wraps)
+        # Right arrow → sidebar (detail closed, so cycles back)
         await pilot.press("right")
         await pilot.pause()
         assert screen.current_panel == "sidebar"
@@ -178,14 +173,8 @@ async def test_panel_navigation_left_arrow():
         screen = app.screen
         assert isinstance(screen, ClusterScreen)
 
-        # Start on sidebar, move to search first
+        # Start on sidebar, move to table
         await pilot.press("right")
-        await pilot.press("right")
-        await pilot.pause()
-        assert screen.current_panel == "search"
-
-        # Left arrow → table
-        await pilot.press("left")
         await pilot.pause()
         assert screen.current_panel == "table"
 
@@ -194,10 +183,10 @@ async def test_panel_navigation_left_arrow():
         await pilot.pause()
         assert screen.current_panel == "sidebar"
 
-        # Left arrow → search (wraps)
+        # Left arrow → table (wraps back)
         await pilot.press("left")
         await pilot.pause()
-        assert screen.current_panel == "search"
+        assert screen.current_panel == "table"
 
 
 @pytest.mark.asyncio
