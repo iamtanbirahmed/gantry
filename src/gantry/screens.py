@@ -544,6 +544,10 @@ class ClusterScreen(Screen):
         """Apply describe result on main thread."""
         self._show_detail_panel("DESCRIBE", description)
 
+    def _apply_logs_result(self, logs: str, status: str) -> None:
+        """Apply logs result on main thread."""
+        self._show_detail_panel("LOGS", logs)
+
     def _format_resource_description(self, resource_type: str, result: Dict[str, Any]) -> str:
         """Format resource description for display."""
         if "error" in result:
@@ -672,10 +676,9 @@ class ClusterScreen(Screen):
         logger.debug(f"_show_logs_worker started for pod {pod_name} in {namespace}")
         logs = k8s.get_pod_logs(pod_name, namespace=namespace)
         if logs:
-            log_display = f"=== Logs for {pod_name} ===\n\n{logs}"
             status = f"Logs for {pod_name}"
             logger.debug(f"_show_logs_worker completed for pod {pod_name}")
-            self.app.call_from_thread(self._apply_describe_result, log_display, status)
+            self.app.call_from_thread(self._apply_logs_result, logs, status)
         else:
             logger.error(f"Failed to retrieve logs for pod {pod_name}")
             self.app.call_from_thread(self._apply_fetch_status, f"Failed to retrieve logs for {pod_name}")
