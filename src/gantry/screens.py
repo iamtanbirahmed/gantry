@@ -593,6 +593,62 @@ class ClusterScreen(Screen):
             # If detail panel is not available, just update status bar
             pass
 
+    def _show_detail_panel(self, title: str, content: str) -> None:
+        """Show the detail panel with the given title and content.
+
+        Args:
+            title: Panel header (e.g. "DESCRIBE", "LOGS")
+            content: Text content to display
+        """
+        try:
+            # Get the detail panel and its content widget
+            detail_panel = self.query_one("#detail-panel", VerticalScroll)
+            detail_content = self.query_one("#detail-panel-content", Static)
+
+            # Format content with title
+            formatted = f"{title}\n\n{content}"
+            detail_content.update(formatted)
+
+            # Show the panel
+            detail_panel.add_class("show")
+            self.detail_panel_open = True
+
+            # Update panel focus cycle to include "detail"
+            self.current_panel = "detail"
+            detail_panel.focus()
+
+            # Update status bar with hint
+            self.connection_status = f"Detail: {title} | ESC to close · ↑↓ scroll"
+            self._update_status_bar()
+
+            logger.debug(f"_show_detail_panel: {title}")
+        except Exception as e:
+            logger.error(f"Error showing detail panel: {e}")
+
+    def _close_detail_panel(self) -> None:
+        """Close the detail panel and return focus to the table."""
+        try:
+            detail_panel = self.query_one("#detail-panel", VerticalScroll)
+            detail_panel.remove_class("show")
+            self.detail_panel_open = False
+
+            # Clear the content
+            detail_content = self.query_one("#detail-panel-content", Static)
+            detail_content.update("")
+
+            # Return focus to table
+            self.current_panel = "table"
+            table = self.query_one("#resource-table", ResourceTable)
+            table.focus()
+
+            # Restore normal status bar
+            self.connection_status = "Connected"
+            self._update_status_bar()
+
+            logger.debug("_close_detail_panel")
+        except Exception as e:
+            logger.error(f"Error closing detail panel: {e}")
+
     def action_show_logs(self) -> None:
         """Show logs for the selected pod."""
         if self.current_resource_type != "Pods":
