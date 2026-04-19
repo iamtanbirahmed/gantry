@@ -6,6 +6,7 @@ from textual.widgets import ListView
 
 from gantry.app import GantryApp
 from gantry.screens import ClusterScreen, HelmScreen
+from gantry.widgets import KeybindingsBar
 
 
 def test_app_initializes():
@@ -277,3 +278,59 @@ async def test_escape_closes_detail_panel():
         assert screen.detail_panel_open is False
         detail_panel = screen.query_one("#detail-panel", VerticalScroll)
         assert "show" not in detail_panel.classes
+
+def test_keybindings_bar_detail_panel_open():
+    """KeybindingsBar should show detail panel hints when detail is open."""
+    bar = KeybindingsBar()
+    bar.update_context("cluster", "detail", detail_open=True, search_active=False)
+    
+    output = bar.render()
+    assert "← Back" in output
+    assert "Esc Close" in output
+    assert "↑↓ Scroll" in output
+    assert "Desc" not in output  # Should NOT show normal cluster bindings
+
+
+def test_keybindings_bar_search_active():
+    """KeybindingsBar should show search hints when search is active."""
+    bar = KeybindingsBar()
+    bar.update_context("cluster", "sidebar", detail_open=False, search_active=True)
+    
+    output = bar.render()
+    assert "Esc Cancel" in output
+    assert "↵ Select" in output
+    assert "Desc" not in output  # Should NOT show normal cluster bindings
+
+
+def test_keybindings_bar_cluster_normal():
+    """KeybindingsBar should show cluster screen bindings in normal state."""
+    bar = KeybindingsBar()
+    bar.update_context("cluster", "table", detail_open=False, search_active=False)
+    
+    output = bar.render()
+    assert "←→ Nav" in output
+    assert "d Desc" in output
+    assert "l Logs" in output
+    assert "r Refr" in output
+    assert "c Ctx" in output
+    assert "/ Srch" in output
+    assert "Tab Helm" in output
+    assert "q Quit" in output
+
+
+def test_keybindings_bar_helm_normal():
+    """KeybindingsBar should show helm screen bindings in normal state."""
+    bar = KeybindingsBar()
+    bar.update_context("helm", "table", detail_open=False, search_active=False)
+    
+    output = bar.render()
+    assert "←→ Nav" in output
+    assert "↵ Deploy" in output
+    assert "r Refr" in output
+    assert "c Ctx" in output
+    assert "/ Srch" in output
+    assert "Tab Cluster" in output
+    assert "q Quit" in output
+    # Should NOT show cluster-specific bindings
+    assert "Desc" not in output
+    assert "Logs" not in output
