@@ -194,7 +194,7 @@ class ClusterScreen(Screen):
         # Existing keybindings
         ("escape", "close_detail_panel", "Close Panel"),
         ("tab", "app.action_switch_screen", "Switch to Helm View"),
-        ("slash", "focus_search", "Search"),
+        Binding("slash", "focus_search", "Search", priority=True),
         ("c", "show_context_picker", "Pick Context"),
         ("d", "describe_resource", "Describe"),
         ("l", "show_logs", "Logs"),
@@ -249,9 +249,9 @@ class ClusterScreen(Screen):
     SearchInput {
         height: 1;
         width: 100%;
-        display: none;
         border: solid $accent;
         padding: 0 1;
+        display: none;
     }
 
     SearchInput.show {
@@ -519,10 +519,10 @@ class ClusterScreen(Screen):
             self.current_resource_type = self._RESOURCE_TYPES[event.list_view.index]
 
     def action_focus_search(self) -> None:
-        """Focus on the search input."""
+        """Show and focus the search input (vim-style)."""
         search_input: SearchInput = self.query_one("#search-input", SearchInput)
         search_input.add_class("show")
-        self.call_after_refresh(search_input.focus)
+        search_input.focus()
 
     def action_describe_resource(self) -> None:
         """Describe the selected resource."""
@@ -855,7 +855,7 @@ class HelmScreen(Screen):
 
         # Existing keybindings
         ("tab", "app.action_switch_screen", "Switch to Cluster View"),
-        Binding("slash", "focus_search", "Search", priority=True),
+        Binding("ctrl+f", "focus_search", "Search", priority=True),
         ("c", "show_context_picker", "Pick Context"),
         ("enter", "execute_action('deploy')", "Deploy Chart"),
         ("r", "refresh_charts", "Refresh"),
@@ -911,13 +911,8 @@ class HelmScreen(Screen):
     SearchInput {
         height: 1;
         width: 100%;
-        display: none;
         border: solid $accent;
         padding: 0 1;
-    }
-
-    SearchInput.show {
-        display: block;
     }
 
     #detail-panel {
@@ -1124,8 +1119,7 @@ class HelmScreen(Screen):
     def action_focus_search(self) -> None:
         """Focus on the search input."""
         search_input: SearchInput = self.query_one("#search-input", SearchInput)
-        search_input.add_class("show")
-        self.call_after_refresh(search_input.focus)
+        search_input.focus()
 
     def action_refresh_charts(self) -> None:
         """Refresh the chart list."""
