@@ -6,6 +6,7 @@ from textual.widgets import DataTable, Static, Input
 from textual.containers import Container, Horizontal, Vertical
 from textual.message import Message
 from textual.events import Key
+from textual.css.query import NoMatches
 
 logger = logging.getLogger(__name__)
 
@@ -179,16 +180,17 @@ class SearchInput(Input):
             try:
                 table = self.screen.query_one(ResourceTable)
                 table.focus()
-            except Exception:
-                pass
+            except NoMatches:
+                logger.debug("SearchInput: no ResourceTable found to return focus to")
         elif event.key == "enter":
+            # Confirm search: hide the bar but keep filter active (do not clear value)
             event.stop()
             self.remove_class("show")
             try:
                 table = self.screen.query_one(ResourceTable)
                 table.focus()
-            except Exception:
-                pass
+            except NoMatches:
+                logger.debug("SearchInput: no ResourceTable found to return focus to")
         elif event.key == "right":
             event.stop()
             self.screen.action_focus_next_panel()
