@@ -308,10 +308,10 @@ class KeybindingsBar(Static):
         self.update(self._build_text())
 
     def _build_text(self) -> str:
-        """Build abbreviated keybindings string based on current context."""
+        """Build keybindings string based on current context."""
         # Case 1: Detail panel open
         if self.detail_panel_open:
-            return "← Back | → Fwd | Esc Close | ↑↓ Scroll"
+            return "← Back | → Forward | Esc Close | ↑↓ Scroll"
 
         # Case 2: Search active
         if self.search_active:
@@ -319,9 +319,9 @@ class KeybindingsBar(Static):
 
         # Case 3 & 4: Normal state (depends on screen type)
         if self.screen_type == "cluster":
-            return "←→ Nav | d Desc | l Logs | r Refr | c Ctx | / Srch | Tab Helm | q Quit"
+            return "←→ Navigate | d Describe | l Logs | r Refresh | c Context | / Search | Tab Helm | q Quit"
         elif self.screen_type == "helm":
-            return "←→ Nav | ↵ Deploy | r Refr | c Ctx | / Srch | Tab Cluster | q Quit"
+            return "←→ Navigate | ↵ Deploy | r Refresh | c Context | / Search | Tab Cluster | q Quit"
 
         # Fallback (should not reach here)
         return ""

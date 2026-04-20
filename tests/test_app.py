@@ -308,12 +308,12 @@ def test_keybindings_bar_cluster_normal():
     bar.update_context("cluster", "table", detail_open=False, search_active=False)
 
     output = bar._build_text()
-    assert "←→ Nav" in output
-    assert "d Desc" in output
+    assert "←→ Navigate" in output
+    assert "d Describe" in output
     assert "l Logs" in output
-    assert "r Refr" in output
-    assert "c Ctx" in output
-    assert "/ Srch" in output
+    assert "r Refresh" in output
+    assert "c Context" in output
+    assert "/ Search" in output
     assert "Tab Helm" in output
     assert "q Quit" in output
 
@@ -324,13 +324,13 @@ def test_keybindings_bar_helm_normal():
     bar.update_context("helm", "table", detail_open=False, search_active=False)
 
     output = bar._build_text()
-    assert "←→ Nav" in output
+    assert "←→ Navigate" in output
     assert "↵ Deploy" in output
-    assert "r Refr" in output
-    assert "c Ctx" in output
-    assert "/ Srch" in output
+    assert "r Refresh" in output
+    assert "c Context" in output
+    assert "/ Search" in output
     assert "Tab Cluster" in output
     assert "q Quit" in output
     # Should NOT show cluster-specific bindings
-    assert "Desc" not in output
+    assert "Describe" not in output
     assert "Logs" not in output

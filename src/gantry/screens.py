@@ -279,16 +279,19 @@ class ClusterScreen(Screen):
     }
 
     StatusBar {
-        height: 1;
+        height: auto;
         border: solid $accent;
-        padding: 0 1;
+        border-bottom: solid $accent-darken-2;
+        padding: 0 2;
+        background: $panel;
+        color: $text;
     }
 
     #keybindings-bar {
-        height: 1;
+        height: auto;
         border: solid $accent;
-        border-top: none;
-        padding: 0 1;
+        border-top: solid $accent-darken-2;
+        padding: 0 2;
         background: $panel;
         color: $text;
     }
@@ -933,16 +936,19 @@ class HelmScreen(Screen):
     }
 
     StatusBar {
-        height: 1;
+        height: auto;
         border: solid $accent;
-        padding: 0 1;
+        border-bottom: solid $accent-darken-2;
+        padding: 0 2;
+        background: $panel;
+        color: $text;
     }
 
     #keybindings-bar {
-        height: 1;
+        height: auto;
         border: solid $accent;
-        border-top: none;
-        padding: 0 1;
+        border-top: solid $accent-darken-2;
+        padding: 0 2;
         background: $panel;
         color: $text;
     }
