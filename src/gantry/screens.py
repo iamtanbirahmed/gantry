@@ -855,7 +855,7 @@ class HelmScreen(Screen):
 
         # Existing keybindings
         ("tab", "app.action_switch_screen", "Switch to Cluster View"),
-        Binding("ctrl+f", "focus_search", "Search", priority=True),
+        Binding("slash", "focus_search", "Search", priority=True),
         ("c", "show_context_picker", "Pick Context"),
         ("enter", "execute_action('deploy')", "Deploy Chart"),
         ("r", "refresh_charts", "Refresh"),
@@ -913,6 +913,11 @@ class HelmScreen(Screen):
         width: 100%;
         border: solid $accent;
         padding: 0 1;
+        display: none;
+    }
+
+    SearchInput.show {
+        display: block;
     }
 
     #detail-panel {
@@ -1117,8 +1122,9 @@ class HelmScreen(Screen):
             pass
 
     def action_focus_search(self) -> None:
-        """Focus on the search input."""
+        """Show and focus the search input (vim-style)."""
         search_input: SearchInput = self.query_one("#search-input", SearchInput)
+        search_input.add_class("show")
         search_input.focus()
 
     def action_refresh_charts(self) -> None:
