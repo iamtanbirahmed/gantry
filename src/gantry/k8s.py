@@ -108,18 +108,19 @@ def list_namespaces(context_name: Optional[str] = None) -> List[str]:
         return []
 
 
-def list_pods(namespace: str = "default") -> List[Dict[str, Any]]:
+def list_pods(namespace: str = "default", context: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     List all pods in a given namespace.
 
     Args:
         namespace: Kubernetes namespace (default: "default"). Use "all" for all namespaces.
+        context: Kubernetes context name. If None, uses the active kubeconfig context.
 
     Returns a list of pod dictionaries with name, status, ready replicas, etc.
     """
     logger.debug(f"list_pods called with namespace={namespace}")
     try:
-        config.load_kube_config()
+        config.load_kube_config(context=context)
         v1 = client.CoreV1Api()
 
         if namespace == "all":
@@ -163,18 +164,19 @@ def list_pods(namespace: str = "default") -> List[Dict[str, Any]]:
         return [{"error": str(e), "type": "list_pods_error"}]
 
 
-def list_services(namespace: str = "default") -> List[Dict[str, Any]]:
+def list_services(namespace: str = "default", context: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     List all services in a given namespace.
 
     Args:
         namespace: Kubernetes namespace (default: "default"). Use "all" for all namespaces.
+        context: Kubernetes context name. If None, uses the active kubeconfig context.
 
     Returns a list of service dictionaries with name, type, cluster IP, ports, etc.
     """
     logger.debug(f"list_services called with namespace={namespace}")
     try:
-        config.load_kube_config()
+        config.load_kube_config(context=context)
         v1 = client.CoreV1Api()
 
         if namespace == "all":
@@ -217,18 +219,19 @@ def list_services(namespace: str = "default") -> List[Dict[str, Any]]:
         return [{"error": str(e), "type": "list_services_error"}]
 
 
-def list_deployments(namespace: str = "default") -> List[Dict[str, Any]]:
+def list_deployments(namespace: str = "default", context: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     List all deployments in a given namespace.
 
     Args:
         namespace: Kubernetes namespace (default: "default"). Use "all" for all namespaces.
+        context: Kubernetes context name. If None, uses the active kubeconfig context.
 
     Returns a list of deployment dictionaries with name, replicas, status, etc.
     """
     logger.debug(f"list_deployments called with namespace={namespace}")
     try:
-        config.load_kube_config()
+        config.load_kube_config(context=context)
         apps_v1 = client.AppsV1Api()
 
         if namespace == "all":
@@ -262,18 +265,19 @@ def list_deployments(namespace: str = "default") -> List[Dict[str, Any]]:
         return [{"error": str(e), "type": "list_deployments_error"}]
 
 
-def list_configmaps(namespace: str = "default") -> List[Dict[str, Any]]:
+def list_configmaps(namespace: str = "default", context: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     List all configmaps in a given namespace.
 
     Args:
         namespace: Kubernetes namespace (default: "default"). Use "all" for all namespaces.
+        context: Kubernetes context name. If None, uses the active kubeconfig context.
 
     Returns a list of configmap dictionaries with name, data keys, etc.
     """
     logger.debug(f"list_configmaps called with namespace={namespace}")
     try:
-        config.load_kube_config()
+        config.load_kube_config(context=context)
         v1 = client.CoreV1Api()
 
         if namespace == "all":

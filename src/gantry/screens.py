@@ -412,23 +412,24 @@ class ClusterScreen(Screen):
         fetch_id = self._fetch_id
         resource_type = self.current_resource_type
         namespace = self.current_namespace
-        self._fetch_resources_worker(fetch_id, resource_type, namespace)
+        context = self.current_context
+        self._fetch_resources_worker(fetch_id, resource_type, namespace, context)
 
     @work(thread=True)
-    def _fetch_resources_worker(self, fetch_id: int, resource_type: str, namespace: str) -> None:
+    def _fetch_resources_worker(self, fetch_id: int, resource_type: str, namespace: str, context: str) -> None:
         """Worker to fetch resources without blocking UI."""
         logger.debug(f"_fetch_resources_worker started: fetch_id={fetch_id}, resource_type={resource_type}, namespace={namespace}")
         resources = []
         status = "Connected"
         try:
             if resource_type == "Pods":
-                resources = k8s.list_pods(namespace)
+                resources = k8s.list_pods(namespace, context=context)
             elif resource_type == "Services":
-                resources = k8s.list_services(namespace)
+                resources = k8s.list_services(namespace, context=context)
             elif resource_type == "Deployments":
-                resources = k8s.list_deployments(namespace)
+                resources = k8s.list_deployments(namespace, context=context)
             elif resource_type == "ConfigMaps":
-                resources = k8s.list_configmaps(namespace)
+                resources = k8s.list_configmaps(namespace, context=context)
 
             # Filter out error entries
             resources = [r for r in resources if "error" not in r]
