@@ -36,9 +36,6 @@ class ResourceTable(DataTable):
         border: solid $accent;
     }
 
-    ResourceTable:focus {
-        border: double $accent;
-    }
     """
 
     def __init__(self, *args, **kwargs):

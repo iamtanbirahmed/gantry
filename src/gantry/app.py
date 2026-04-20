@@ -68,10 +68,6 @@ class GantryApp(App):
         width: 100%;
     }
 
-    DataTable:focus {
-        border: solid $accent;
-    }
-
     Input {
         border: solid $accent;
     }
