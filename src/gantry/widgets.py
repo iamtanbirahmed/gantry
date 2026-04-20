@@ -143,6 +143,11 @@ class SearchInput(Input):
         border: solid $accent;
         padding: 0 1;
         margin: 1 0;
+        display: none;
+    }
+
+    SearchInput.show {
+        display: block;
     }
 
     SearchInput:focus {
@@ -165,8 +170,26 @@ class SearchInput(Input):
         self.post_message(self.SearchChanged(message.value))
 
     def _on_key(self, event: Key) -> None:
-        """Handle key events and allow right/left arrows to bubble up for panel navigation."""
-        if event.key == "right":
+        """Handle key events for search input."""
+        if event.key == "escape":
+            event.stop()
+            self.value = ""
+            self.post_message(self.SearchChanged(""))
+            self.remove_class("show")
+            try:
+                table = self.screen.query_one(ResourceTable)
+                table.focus()
+            except Exception:
+                pass
+        elif event.key == "enter":
+            event.stop()
+            self.remove_class("show")
+            try:
+                table = self.screen.query_one(ResourceTable)
+                table.focus()
+            except Exception:
+                pass
+        elif event.key == "right":
             event.stop()
             self.screen.action_focus_next_panel()
         elif event.key == "left":
