@@ -246,18 +246,6 @@ class ClusterScreen(Screen):
         background: $surface;
     }
 
-    SearchInput {
-        height: 1;
-        width: 100%;
-        border: solid $accent;
-        padding: 0 1;
-        display: none;
-    }
-
-    SearchInput.show {
-        display: block;
-    }
-
     #detail-panel {
         width: 40%;
         height: 100%;
@@ -306,6 +294,7 @@ class ClusterScreen(Screen):
     # Panel focus state: tracks which panel currently has focus
     current_panel = reactive("sidebar")  # "sidebar", "table", or "search"
     detail_panel_open = reactive(False)  # Tracks if detail panel is visible
+    search_active: reactive[bool] = reactive(False)  # Tracks if search input is active
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -523,6 +512,7 @@ class ClusterScreen(Screen):
         search_input: SearchInput = self.query_one("#search-input", SearchInput)
         search_input.add_class("show")
         search_input.focus()
+        self.search_active = True
 
     def action_describe_resource(self) -> None:
         """Describe the selected resource."""
@@ -829,20 +819,29 @@ class ClusterScreen(Screen):
         """React to current_panel changes."""
         if hasattr(self, 'keybindings_bar'):
             self.keybindings_bar.update_context(
-                "cluster", new_panel, self.detail_panel_open, False
+                "cluster", new_panel, self.detail_panel_open, self.search_active
             )
 
     def watch_detail_panel_open(self, new_open: bool) -> None:
         """React to detail_panel_open changes."""
         if hasattr(self, 'keybindings_bar'):
             self.keybindings_bar.update_context(
-                "cluster", self.current_panel, new_open, False
+                "cluster", self.current_panel, new_open, self.search_active
+            )
+
+    def watch_search_active(self, value: bool) -> None:
+        """React to search_active changes."""
+        if hasattr(self, 'keybindings_bar'):
+            self.keybindings_bar.update_context(
+                "cluster", self.current_panel, self.detail_panel_open, value
             )
 
     def on_search_input_search_changed(self, message: SearchInput.SearchChanged) -> None:
         """Handle search input changes and filter the table."""
         table: ResourceTable = self.query_one("#resource-table", ResourceTable)
         table.filter_by_search(message.value)
+        if not message.value:
+            self.search_active = False
 
 
 class HelmScreen(Screen):
@@ -908,18 +907,6 @@ class HelmScreen(Screen):
         background: $surface;
     }
 
-    SearchInput {
-        height: 1;
-        width: 100%;
-        border: solid $accent;
-        padding: 0 1;
-        display: none;
-    }
-
-    SearchInput.show {
-        display: block;
-    }
-
     #detail-panel {
         height: auto;
         border: solid $accent;
@@ -960,6 +947,7 @@ class HelmScreen(Screen):
     current_namespace = reactive("default")
     # Panel focus state: tracks which panel currently has focus
     current_panel = reactive("sidebar")  # "sidebar", "table", or "search"
+    search_active: reactive[bool] = reactive(False)  # Tracks if search input is active
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1088,7 +1076,14 @@ class HelmScreen(Screen):
         """React to current_panel changes."""
         if hasattr(self, 'keybindings_bar'):
             self.keybindings_bar.update_context(
-                "helm", new_panel, False, False
+                "helm", new_panel, False, self.search_active
+            )
+
+    def watch_search_active(self, value: bool) -> None:
+        """React to search_active changes."""
+        if hasattr(self, 'keybindings_bar'):
+            self.keybindings_bar.update_context(
+                "helm", self.current_panel, False, value
             )
 
     def on_button_pressed(self, event) -> None:
@@ -1126,6 +1121,7 @@ class HelmScreen(Screen):
         search_input: SearchInput = self.query_one("#search-input", SearchInput)
         search_input.add_class("show")
         search_input.focus()
+        self.search_active = True
 
     def action_refresh_charts(self) -> None:
         """Refresh the chart list."""
@@ -1135,14 +1131,13 @@ class HelmScreen(Screen):
     def action_focus_next_panel(self) -> None:
         """Move focus to the next panel (right arrow).
 
-        Cycles: table → search → table (HelmScreen has no sidebar)
+        HelmScreen only has a table panel; cycles back to table.
+        Search is only reachable via /.
         """
-        # Map current panel to next panel
-        # Note: HelmScreen only has table and search panels, no sidebar
+        # HelmScreen has only one navigable panel (table); stay on it.
         next_panels = {
-            "sidebar": "table",  # Fallback to table if somehow in sidebar state
-            "table": "search",
-            "search": "table",
+            "sidebar": "table",  # Fallback if somehow in sidebar state
+            "table": "table",
         }
         next_panel = next_panels.get(self.current_panel, "table")
         self.current_panel = next_panel
@@ -1151,32 +1146,27 @@ class HelmScreen(Screen):
         try:
             if next_panel == "table":
                 self.query_one("#chart-table", ResourceTable).focus()
-            elif next_panel == "search":
-                self.query_one("#search-input", SearchInput).focus()
         except Exception as e:
             logger.debug(f"Error focusing panel: {e}")
 
     def action_focus_previous_panel(self) -> None:
         """Move focus to the previous panel (left arrow).
 
-        Cycles: search → table → search (HelmScreen has no sidebar)
+        HelmScreen only has a table panel; cycles back to table.
+        Search is only reachable via /.
         """
-        # Map current panel to previous panel
-        # Note: HelmScreen only has table and search panels, no sidebar
+        # HelmScreen has only one navigable panel (table); stay on it.
         prev_panels = {
-            "sidebar": "search",  # Fallback to search if somehow in sidebar state
-            "table": "search",
-            "search": "table",
+            "sidebar": "table",  # Fallback if somehow in sidebar state
+            "table": "table",
         }
-        prev_panel = prev_panels.get(self.current_panel, "search")
+        prev_panel = prev_panels.get(self.current_panel, "table")
         self.current_panel = prev_panel
 
         # Move focus to the target panel widget
         try:
             if prev_panel == "table":
                 self.query_one("#chart-table", ResourceTable).focus()
-            elif prev_panel == "search":
-                self.query_one("#search-input", SearchInput).focus()
         except Exception as e:
             logger.debug(f"Error focusing panel: {e}")
 
@@ -1245,6 +1235,8 @@ class HelmScreen(Screen):
         """Handle search input changes and filter the table."""
         table: ResourceTable = self.query_one("#chart-table", ResourceTable)
         table.filter_by_search(message.value)
+        if not message.value:
+            self.search_active = False
 
     def on_data_table_row_selected(self, message) -> None:
         """Handle chart selection and trigger deploy flow."""
