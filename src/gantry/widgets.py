@@ -447,8 +447,18 @@ class ResourceSidebar(Widget):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        # Maps ListView widget ID → list of (name, implemented) for that group
-        self._list_view_items: dict[str, list[tuple[str, bool]]] = {}
+        # Pre-build the lookup: ListView ID → list of (name, implemented)
+        self._list_view_items: dict[str, list[tuple[str, bool]]] = {
+            (
+                "sidebar-"
+                + group_name.lower()
+                .replace(" ", "-")
+                .replace("&", "and")
+                .replace("(", "")
+                .replace(")", "")
+            ): items
+            for group_name, items in self.GROUPS
+        }
 
     def compose(self):
         with VerticalScroll():
@@ -461,7 +471,6 @@ class ResourceSidebar(Widget):
                     .replace("(", "")
                     .replace(")", "")
                 )
-                self._list_view_items[lv_id] = items
                 with Collapsible(title=group_name):
                     yield ListView(
                         *[
@@ -487,7 +496,7 @@ class ResourceSidebar(Widget):
             name, implemented = items[idx]
             self.post_message(self.ResourceSelected(name, implemented))
 
-    def _on_key(self, event) -> None:
+    def _on_key(self, event: Key) -> None:
         """Forward right-arrow to screen panel navigation."""
         if event.key == "right":
             event.stop()

@@ -6,7 +6,7 @@ from textual.widgets import ListView
 
 from gantry.app import GantryApp
 from gantry.screens import ClusterScreen, HelmScreen
-from gantry.widgets import KeybindingsBar
+from gantry.widgets import KeybindingsBar, ResourceSidebar
 
 
 def test_app_initializes():
@@ -334,10 +334,6 @@ def test_keybindings_bar_helm_normal():
     # Should NOT show cluster-specific bindings
     assert "Describe" not in output
     assert "Logs" not in output
-
-
-import pytest
-from gantry.widgets import ResourceSidebar
 
 
 def test_resource_sidebar_instantiates():
