@@ -309,6 +309,459 @@ def list_configmaps(namespace: str = "default", context: Optional[str] = None) -
         return [{"error": str(e), "type": "list_configmaps_error"}]
 
 
+def list_replicasets(namespace: str = "default", context: Optional[str] = None) -> List[Dict[str, Any]]:
+    """List all ReplicaSets in a given namespace."""
+    logger.debug(f"list_replicasets called with namespace={namespace}")
+    try:
+        config.load_kube_config(context=context)
+        apps_v1 = client.AppsV1Api()
+
+        if namespace == "all":
+            replicasets = apps_v1.list_replica_set_for_all_namespaces()
+        else:
+            replicasets = apps_v1.list_namespaced_replica_set(namespace=namespace)
+
+        result = []
+        for rs in replicasets.items:
+            result.append({
+                "name": rs.metadata.name,
+                "namespace": rs.metadata.namespace,
+                "desired": rs.spec.replicas or 0,
+                "ready": rs.status.ready_replicas or 0,
+                "available": rs.status.available_replicas or 0,
+            })
+        logger.debug(f"list_replicasets returned {len(result)} replicasets for namespace={namespace}")
+        return result
+    except config.config_exception.ConfigException:
+        logger.error("kubeconfig not found or invalid in list_replicasets")
+        return [{"error": "kubeconfig not found or invalid", "type": "missing_kubeconfig"}]
+    except ApiException as e:
+        if e.status == 404:
+            return []
+        logger.error(f"API error in list_replicasets: {e}", exc_info=True)
+        return [{"error": str(e), "type": "api_error", "status": e.status}]
+    except Exception as e:
+        logger.error(f"Error in list_replicasets: {e}", exc_info=True)
+        return [{"error": str(e), "type": "list_replicasets_error"}]
+
+
+def list_statefulsets(namespace: str = "default", context: Optional[str] = None) -> List[Dict[str, Any]]:
+    """List all StatefulSets in a given namespace."""
+    logger.debug(f"list_statefulsets called with namespace={namespace}")
+    try:
+        config.load_kube_config(context=context)
+        apps_v1 = client.AppsV1Api()
+
+        if namespace == "all":
+            statefulsets = apps_v1.list_stateful_set_for_all_namespaces()
+        else:
+            statefulsets = apps_v1.list_namespaced_stateful_set(namespace=namespace)
+
+        result = []
+        for ss in statefulsets.items:
+            result.append({
+                "name": ss.metadata.name,
+                "namespace": ss.metadata.namespace,
+                "ready": f"{ss.status.ready_replicas or 0}/{ss.spec.replicas or 0}",
+                "age": ss.metadata.creation_timestamp.isoformat() if ss.metadata.creation_timestamp else "",
+            })
+        logger.debug(f"list_statefulsets returned {len(result)} statefulsets for namespace={namespace}")
+        return result
+    except config.config_exception.ConfigException:
+        logger.error("kubeconfig not found or invalid in list_statefulsets")
+        return [{"error": "kubeconfig not found or invalid", "type": "missing_kubeconfig"}]
+    except ApiException as e:
+        if e.status == 404:
+            return []
+        logger.error(f"API error in list_statefulsets: {e}", exc_info=True)
+        return [{"error": str(e), "type": "api_error", "status": e.status}]
+    except Exception as e:
+        logger.error(f"Error in list_statefulsets: {e}", exc_info=True)
+        return [{"error": str(e), "type": "list_statefulsets_error"}]
+
+
+def list_daemonsets(namespace: str = "default", context: Optional[str] = None) -> List[Dict[str, Any]]:
+    """List all DaemonSets in a given namespace."""
+    logger.debug(f"list_daemonsets called with namespace={namespace}")
+    try:
+        config.load_kube_config(context=context)
+        apps_v1 = client.AppsV1Api()
+
+        if namespace == "all":
+            daemonsets = apps_v1.list_daemon_set_for_all_namespaces()
+        else:
+            daemonsets = apps_v1.list_namespaced_daemon_set(namespace=namespace)
+
+        result = []
+        for ds in daemonsets.items:
+            result.append({
+                "name": ds.metadata.name,
+                "namespace": ds.metadata.namespace,
+                "desired": ds.status.desired_number_scheduled or 0,
+                "ready": ds.status.number_ready or 0,
+                "node_selector": str(ds.spec.template.spec.node_selector or {}),
+            })
+        logger.debug(f"list_daemonsets returned {len(result)} daemonsets for namespace={namespace}")
+        return result
+    except config.config_exception.ConfigException:
+        logger.error("kubeconfig not found or invalid in list_daemonsets")
+        return [{"error": "kubeconfig not found or invalid", "type": "missing_kubeconfig"}]
+    except ApiException as e:
+        if e.status == 404:
+            return []
+        logger.error(f"API error in list_daemonsets: {e}", exc_info=True)
+        return [{"error": str(e), "type": "api_error", "status": e.status}]
+    except Exception as e:
+        logger.error(f"Error in list_daemonsets: {e}", exc_info=True)
+        return [{"error": str(e), "type": "list_daemonsets_error"}]
+
+
+def list_jobs(namespace: str = "default", context: Optional[str] = None) -> List[Dict[str, Any]]:
+    """List all Jobs in a given namespace."""
+    logger.debug(f"list_jobs called with namespace={namespace}")
+    try:
+        config.load_kube_config(context=context)
+        batch_v1 = client.BatchV1Api()
+
+        if namespace == "all":
+            jobs = batch_v1.list_job_for_all_namespaces()
+        else:
+            jobs = batch_v1.list_namespaced_job(namespace=namespace)
+
+        result = []
+        for job in jobs.items:
+            completions = job.spec.completions or 1
+            succeeded = job.status.succeeded or 0
+            active = job.status.active or 0
+            failed = job.status.failed or 0
+            if succeeded >= completions:
+                job_status = "Complete"
+            elif active > 0:
+                job_status = "Running"
+            elif failed > 0:
+                job_status = "Failed"
+            else:
+                job_status = "Pending"
+            result.append({
+                "name": job.metadata.name,
+                "namespace": job.metadata.namespace,
+                "completions": f"{succeeded}/{completions}",
+                "duration": str(job.status.completion_time - job.status.start_time) if (job.status.completion_time and job.status.start_time) else "N/A",
+                "status": job_status,
+            })
+        logger.debug(f"list_jobs returned {len(result)} jobs for namespace={namespace}")
+        return result
+    except config.config_exception.ConfigException:
+        logger.error("kubeconfig not found or invalid in list_jobs")
+        return [{"error": "kubeconfig not found or invalid", "type": "missing_kubeconfig"}]
+    except ApiException as e:
+        if e.status == 404:
+            return []
+        logger.error(f"API error in list_jobs: {e}", exc_info=True)
+        return [{"error": str(e), "type": "api_error", "status": e.status}]
+    except Exception as e:
+        logger.error(f"Error in list_jobs: {e}", exc_info=True)
+        return [{"error": str(e), "type": "list_jobs_error"}]
+
+
+def list_cronjobs(namespace: str = "default", context: Optional[str] = None) -> List[Dict[str, Any]]:
+    """List all CronJobs in a given namespace."""
+    logger.debug(f"list_cronjobs called with namespace={namespace}")
+    try:
+        config.load_kube_config(context=context)
+        batch_v1 = client.BatchV1Api()
+
+        if namespace == "all":
+            cronjobs = batch_v1.list_cron_job_for_all_namespaces()
+        else:
+            cronjobs = batch_v1.list_namespaced_cron_job(namespace=namespace)
+
+        result = []
+        for cj in cronjobs.items:
+            result.append({
+                "name": cj.metadata.name,
+                "namespace": cj.metadata.namespace,
+                "schedule": cj.spec.schedule,
+                "last_run": cj.status.last_schedule_time.isoformat() if cj.status.last_schedule_time else "Never",
+                "active": len(cj.status.active or []),
+            })
+        logger.debug(f"list_cronjobs returned {len(result)} cronjobs for namespace={namespace}")
+        return result
+    except config.config_exception.ConfigException:
+        logger.error("kubeconfig not found or invalid in list_cronjobs")
+        return [{"error": "kubeconfig not found or invalid", "type": "missing_kubeconfig"}]
+    except ApiException as e:
+        if e.status == 404:
+            return []
+        logger.error(f"API error in list_cronjobs: {e}", exc_info=True)
+        return [{"error": str(e), "type": "api_error", "status": e.status}]
+    except Exception as e:
+        logger.error(f"Error in list_cronjobs: {e}", exc_info=True)
+        return [{"error": str(e), "type": "list_cronjobs_error"}]
+
+
+def list_ingresses(namespace: str = "default", context: Optional[str] = None) -> List[Dict[str, Any]]:
+    """List all Ingresses in a given namespace."""
+    logger.debug(f"list_ingresses called with namespace={namespace}")
+    try:
+        config.load_kube_config(context=context)
+        networking_v1 = client.NetworkingV1Api()
+
+        if namespace == "all":
+            ingresses = networking_v1.list_ingress_for_all_namespaces()
+        else:
+            ingresses = networking_v1.list_namespaced_ingress(namespace=namespace)
+
+        result = []
+        for ing in ingresses.items:
+            hosts = ",".join(
+                rule.host for rule in (ing.spec.rules or []) if rule.host
+            )
+            annotations = ing.metadata.annotations or {}
+            ingress_class = ing.spec.ingress_class_name or annotations.get("kubernetes.io/ingress.class", "")
+            lb_ingress = ing.status.load_balancer.ingress if ing.status and ing.status.load_balancer else []
+            address = ",".join(
+                lb.ip or lb.hostname or "" for lb in (lb_ingress or [])
+            )
+            result.append({
+                "name": ing.metadata.name,
+                "namespace": ing.metadata.namespace,
+                "class": ingress_class,
+                "hosts": hosts,
+                "address": address,
+            })
+        logger.debug(f"list_ingresses returned {len(result)} ingresses for namespace={namespace}")
+        return result
+    except config.config_exception.ConfigException:
+        logger.error("kubeconfig not found or invalid in list_ingresses")
+        return [{"error": "kubeconfig not found or invalid", "type": "missing_kubeconfig"}]
+    except ApiException as e:
+        if e.status == 404:
+            return []
+        logger.error(f"API error in list_ingresses: {e}", exc_info=True)
+        return [{"error": str(e), "type": "api_error", "status": e.status}]
+    except Exception as e:
+        logger.error(f"Error in list_ingresses: {e}", exc_info=True)
+        return [{"error": str(e), "type": "list_ingresses_error"}]
+
+
+def list_endpoints(namespace: str = "default", context: Optional[str] = None) -> List[Dict[str, Any]]:
+    """List all Endpoints in a given namespace."""
+    logger.debug(f"list_endpoints called with namespace={namespace}")
+    try:
+        config.load_kube_config(context=context)
+        v1 = client.CoreV1Api()
+
+        if namespace == "all":
+            endpoints = v1.list_endpoints_for_all_namespaces()
+        else:
+            endpoints = v1.list_namespaced_endpoints(namespace=namespace)
+
+        result = []
+        for ep in endpoints.items:
+            result.append({
+                "name": ep.metadata.name,
+                "namespace": ep.metadata.namespace,
+                "endpoints": str(len(ep.subsets or [])),
+            })
+        logger.debug(f"list_endpoints returned {len(result)} endpoints for namespace={namespace}")
+        return result
+    except config.config_exception.ConfigException:
+        logger.error("kubeconfig not found or invalid in list_endpoints")
+        return [{"error": "kubeconfig not found or invalid", "type": "missing_kubeconfig"}]
+    except ApiException as e:
+        if e.status == 404:
+            return []
+        logger.error(f"API error in list_endpoints: {e}", exc_info=True)
+        return [{"error": str(e), "type": "api_error", "status": e.status}]
+    except Exception as e:
+        logger.error(f"Error in list_endpoints: {e}", exc_info=True)
+        return [{"error": str(e), "type": "list_endpoints_error"}]
+
+
+def list_secrets(namespace: str = "default", context: Optional[str] = None) -> List[Dict[str, Any]]:
+    """List all Secrets in a given namespace."""
+    logger.debug(f"list_secrets called with namespace={namespace}")
+    try:
+        config.load_kube_config(context=context)
+        v1 = client.CoreV1Api()
+
+        if namespace == "all":
+            secrets = v1.list_secret_for_all_namespaces()
+        else:
+            secrets = v1.list_namespaced_secret(namespace=namespace)
+
+        result = []
+        for secret in secrets.items:
+            result.append({
+                "name": secret.metadata.name,
+                "namespace": secret.metadata.namespace,
+                "type": secret.type or "",
+                "keys": len(secret.data or {}),
+            })
+        logger.debug(f"list_secrets returned {len(result)} secrets for namespace={namespace}")
+        return result
+    except config.config_exception.ConfigException:
+        logger.error("kubeconfig not found or invalid in list_secrets")
+        return [{"error": "kubeconfig not found or invalid", "type": "missing_kubeconfig"}]
+    except ApiException as e:
+        if e.status == 404:
+            return []
+        logger.error(f"API error in list_secrets: {e}", exc_info=True)
+        return [{"error": str(e), "type": "api_error", "status": e.status}]
+    except Exception as e:
+        logger.error(f"Error in list_secrets: {e}", exc_info=True)
+        return [{"error": str(e), "type": "list_secrets_error"}]
+
+
+def list_persistentvolumeclaims(namespace: str = "default", context: Optional[str] = None) -> List[Dict[str, Any]]:
+    """List all PersistentVolumeClaims in a given namespace."""
+    logger.debug(f"list_persistentvolumeclaims called with namespace={namespace}")
+    try:
+        config.load_kube_config(context=context)
+        v1 = client.CoreV1Api()
+
+        if namespace == "all":
+            pvcs = v1.list_persistent_volume_claim_for_all_namespaces()
+        else:
+            pvcs = v1.list_namespaced_persistent_volume_claim(namespace=namespace)
+
+        result = []
+        for pvc in pvcs.items:
+            capacity = ""
+            if pvc.status.capacity:
+                capacity = pvc.status.capacity.get("storage", "")
+            result.append({
+                "name": pvc.metadata.name,
+                "namespace": pvc.metadata.namespace,
+                "status": pvc.status.phase or "",
+                "volume": pvc.spec.volume_name or "",
+                "capacity": capacity,
+            })
+        logger.debug(f"list_persistentvolumeclaims returned {len(result)} pvcs for namespace={namespace}")
+        return result
+    except config.config_exception.ConfigException:
+        logger.error("kubeconfig not found or invalid in list_persistentvolumeclaims")
+        return [{"error": "kubeconfig not found or invalid", "type": "missing_kubeconfig"}]
+    except ApiException as e:
+        if e.status == 404:
+            return []
+        logger.error(f"API error in list_persistentvolumeclaims: {e}", exc_info=True)
+        return [{"error": str(e), "type": "api_error", "status": e.status}]
+    except Exception as e:
+        logger.error(f"Error in list_persistentvolumeclaims: {e}", exc_info=True)
+        return [{"error": str(e), "type": "list_persistentvolumeclaims_error"}]
+
+
+def list_persistentvolumes(context: Optional[str] = None) -> List[Dict[str, Any]]:
+    """List all PersistentVolumes (cluster-scoped)."""
+    logger.debug("list_persistentvolumes called")
+    try:
+        config.load_kube_config(context=context)
+        v1 = client.CoreV1Api()
+        pvs = v1.list_persistent_volume()
+
+        result = []
+        for pv in pvs.items:
+            capacity = ""
+            if pv.spec.capacity:
+                capacity = pv.spec.capacity.get("storage", "")
+            result.append({
+                "name": pv.metadata.name,
+                "namespace": "",
+                "capacity": capacity,
+                "access_modes": ",".join(pv.spec.access_modes or []),
+                "status": pv.status.phase or "",
+            })
+        logger.debug(f"list_persistentvolumes returned {len(result)} pvs")
+        return result
+    except config.config_exception.ConfigException:
+        logger.error("kubeconfig not found or invalid in list_persistentvolumes")
+        return [{"error": "kubeconfig not found or invalid", "type": "missing_kubeconfig"}]
+    except ApiException as e:
+        if e.status == 404:
+            return []
+        logger.error(f"API error in list_persistentvolumes: {e}", exc_info=True)
+        return [{"error": str(e), "type": "api_error", "status": e.status}]
+    except Exception as e:
+        logger.error(f"Error in list_persistentvolumes: {e}", exc_info=True)
+        return [{"error": str(e), "type": "list_persistentvolumes_error"}]
+
+
+def list_namespace_resources(context: Optional[str] = None) -> List[Dict[str, Any]]:
+    """List all Namespaces as resource dicts (cluster-scoped)."""
+    logger.debug("list_namespace_resources called")
+    try:
+        config.load_kube_config(context=context)
+        v1 = client.CoreV1Api()
+        namespaces = v1.list_namespace()
+
+        result = []
+        for ns in namespaces.items:
+            result.append({
+                "name": ns.metadata.name,
+                "namespace": "",
+                "status": ns.status.phase or "",
+                "age": ns.metadata.creation_timestamp.isoformat() if ns.metadata.creation_timestamp else "",
+            })
+        logger.debug(f"list_namespace_resources returned {len(result)} namespaces")
+        return result
+    except config.config_exception.ConfigException:
+        logger.error("kubeconfig not found or invalid in list_namespace_resources")
+        return [{"error": "kubeconfig not found or invalid", "type": "missing_kubeconfig"}]
+    except ApiException as e:
+        if e.status == 404:
+            return []
+        logger.error(f"API error in list_namespace_resources: {e}", exc_info=True)
+        return [{"error": str(e), "type": "api_error", "status": e.status}]
+    except Exception as e:
+        logger.error(f"Error in list_namespace_resources: {e}", exc_info=True)
+        return [{"error": str(e), "type": "list_namespace_resources_error"}]
+
+
+def list_nodes(context: Optional[str] = None) -> List[Dict[str, Any]]:
+    """List all Nodes (cluster-scoped)."""
+    logger.debug("list_nodes called")
+    try:
+        config.load_kube_config(context=context)
+        v1 = client.CoreV1Api()
+        nodes = v1.list_node()
+
+        result = []
+        for node in nodes.items:
+            node_status = next(
+                (c.type for c in (node.status.conditions or []) if c.status == "True"),
+                "Unknown",
+            )
+            labels = node.metadata.labels or {}
+            roles = ",".join(
+                k.replace("node-role.kubernetes.io/", "")
+                for k in labels
+                if k.startswith("node-role.kubernetes.io/")
+            )
+            version = node.status.node_info.kubelet_version if node.status and node.status.node_info else ""
+            result.append({
+                "name": node.metadata.name,
+                "namespace": "",
+                "status": node_status,
+                "roles": roles or "none",
+                "version": version,
+            })
+        logger.debug(f"list_nodes returned {len(result)} nodes")
+        return result
+    except config.config_exception.ConfigException:
+        logger.error("kubeconfig not found or invalid in list_nodes")
+        return [{"error": "kubeconfig not found or invalid", "type": "missing_kubeconfig"}]
+    except ApiException as e:
+        if e.status == 404:
+            return []
+        logger.error(f"API error in list_nodes: {e}", exc_info=True)
+        return [{"error": str(e), "type": "api_error", "status": e.status}]
+    except Exception as e:
+        logger.error(f"Error in list_nodes: {e}", exc_info=True)
+        return [{"error": str(e), "type": "list_nodes_error"}]
+
+
 def describe_resource(
     resource_type: str,
     resource_name: str,
@@ -407,6 +860,135 @@ def describe_resource(
                 "name": cm.metadata.name,
                 "namespace": cm.metadata.namespace,
                 "data": cm.data or {},
+            }
+
+        elif resource_type_lower == "replicaset":
+            rs = apps_v1.read_namespaced_replica_set(name=resource_name, namespace=namespace)
+            return {
+                "name": rs.metadata.name,
+                "namespace": rs.metadata.namespace,
+                "desired": rs.spec.replicas or 0,
+                "ready": rs.status.ready_replicas or 0,
+                "available": rs.status.available_replicas or 0,
+            }
+
+        elif resource_type_lower == "statefulset":
+            ss = apps_v1.read_namespaced_stateful_set(name=resource_name, namespace=namespace)
+            return {
+                "name": ss.metadata.name,
+                "namespace": ss.metadata.namespace,
+                "replicas": ss.spec.replicas or 0,
+                "ready": ss.status.ready_replicas or 0,
+            }
+
+        elif resource_type_lower == "daemonset":
+            ds = apps_v1.read_namespaced_daemon_set(name=resource_name, namespace=namespace)
+            return {
+                "name": ds.metadata.name,
+                "namespace": ds.metadata.namespace,
+                "desired": ds.status.desired_number_scheduled or 0,
+                "ready": ds.status.number_ready or 0,
+            }
+
+        elif resource_type_lower == "job":
+            batch_v1 = client.BatchV1Api()
+            job = batch_v1.read_namespaced_job(name=resource_name, namespace=namespace)
+            return {
+                "name": job.metadata.name,
+                "namespace": job.metadata.namespace,
+                "completions": job.spec.completions or 1,
+                "succeeded": job.status.succeeded or 0,
+                "active": job.status.active or 0,
+                "failed": job.status.failed or 0,
+            }
+
+        elif resource_type_lower == "cronjob":
+            batch_v1 = client.BatchV1Api()
+            cj = batch_v1.read_namespaced_cron_job(name=resource_name, namespace=namespace)
+            return {
+                "name": cj.metadata.name,
+                "namespace": cj.metadata.namespace,
+                "schedule": cj.spec.schedule,
+                "active": len(cj.status.active or []),
+                "last_run": cj.status.last_schedule_time.isoformat() if cj.status.last_schedule_time else "Never",
+            }
+
+        elif resource_type_lower == "ingress":
+            networking_v1 = client.NetworkingV1Api()
+            ing = networking_v1.read_namespaced_ingress(name=resource_name, namespace=namespace)
+            hosts = [rule.host for rule in (ing.spec.rules or []) if rule.host]
+            return {
+                "name": ing.metadata.name,
+                "namespace": ing.metadata.namespace,
+                "class": ing.spec.ingress_class_name or "",
+                "hosts": hosts,
+            }
+
+        elif resource_type_lower == "endpoints":
+            ep = v1.read_namespaced_endpoints(name=resource_name, namespace=namespace)
+            return {
+                "name": ep.metadata.name,
+                "namespace": ep.metadata.namespace,
+                "subsets": len(ep.subsets or []),
+            }
+
+        elif resource_type_lower == "secret":
+            secret = v1.read_namespaced_secret(name=resource_name, namespace=namespace)
+            return {
+                "name": secret.metadata.name,
+                "namespace": secret.metadata.namespace,
+                "type": secret.type or "",
+                "keys": list((secret.data or {}).keys()),
+            }
+
+        elif resource_type_lower == "persistentvolumeclaim":
+            pvc = v1.read_namespaced_persistent_volume_claim(name=resource_name, namespace=namespace)
+            capacity = ""
+            if pvc.status.capacity:
+                capacity = pvc.status.capacity.get("storage", "")
+            return {
+                "name": pvc.metadata.name,
+                "namespace": pvc.metadata.namespace,
+                "status": pvc.status.phase or "",
+                "volume": pvc.spec.volume_name or "",
+                "capacity": capacity,
+            }
+
+        elif resource_type_lower == "persistentvolume":
+            pv = v1.read_persistent_volume(name=resource_name)
+            capacity = ""
+            if pv.spec.capacity:
+                capacity = pv.spec.capacity.get("storage", "")
+            return {
+                "name": pv.metadata.name,
+                "namespace": "",
+                "capacity": capacity,
+                "access_modes": pv.spec.access_modes or [],
+                "status": pv.status.phase or "",
+            }
+
+        elif resource_type_lower == "namespace":
+            ns = v1.read_namespace(name=resource_name)
+            return {
+                "name": ns.metadata.name,
+                "namespace": "",
+                "status": ns.status.phase or "",
+            }
+
+        elif resource_type_lower == "node":
+            node = v1.read_node(name=resource_name)
+            labels = node.metadata.labels or {}
+            roles = ",".join(
+                k.replace("node-role.kubernetes.io/", "")
+                for k in labels
+                if k.startswith("node-role.kubernetes.io/")
+            )
+            version = node.status.node_info.kubelet_version if node.status and node.status.node_info else ""
+            return {
+                "name": node.metadata.name,
+                "namespace": "",
+                "roles": roles or "none",
+                "version": version,
             }
 
         else:
