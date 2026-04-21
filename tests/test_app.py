@@ -403,3 +403,17 @@ async def test_cluster_screen_no_legacy_sidebar():
         # is now a ResourceSidebar, not a ListView.
         with pytest.raises(QueryError):
             app.screen.query_one("#resource-type-sidebar", ListView)
+
+
+@pytest.mark.asyncio
+async def test_stub_resource_shows_not_implemented():
+    """Selecting a stub resource type clears table and sets status to Not implemented."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+        sidebar = screen.query_one(ResourceSidebar)
+        screen.on_resource_sidebar_resource_selected(
+            ResourceSidebar.ResourceSelected("Nodes", False)
+        )
+        assert screen.connection_status == "Not implemented"

@@ -214,22 +214,6 @@ class ClusterScreen(Screen):
         width: 100%;
     }
 
-    #resource-type-sidebar {
-        height: 100%;
-        border-right: solid $accent;
-        background: $panel;
-        padding: 1 0;
-    }
-
-    #resource-type-sidebar > ListItem {
-        padding: 0 1;
-        height: 1;
-    }
-
-    #resource-type-sidebar > ListItem > Label {
-        color: $text;
-        width: 100%;
-    }
 
     #content-area {
         height: 100%;
