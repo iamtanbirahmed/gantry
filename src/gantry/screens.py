@@ -481,12 +481,16 @@ class ClusterScreen(Screen):
                 resources = k8s.list_secrets(namespace, context=context)
             elif resource_type == "PersistentVolumeClaims":
                 resources = k8s.list_persistentvolumeclaims(namespace, context=context)
+            # Cluster-scoped: namespace argument not applicable
             elif resource_type == "PersistentVolumes":
                 resources = k8s.list_persistentvolumes(context=context)
             elif resource_type == "Namespaces":
                 resources = k8s.list_namespace_resources(context=context)
             elif resource_type == "Nodes":
                 resources = k8s.list_nodes(context=context)
+            else:
+                logger.warning(f"Unknown resource type in fetch dispatch: {resource_type!r}")
+                return
 
             # Filter out error entries
             resources = [r for r in resources if "error" not in r]
