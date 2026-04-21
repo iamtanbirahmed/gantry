@@ -118,7 +118,10 @@ def test_cluster_screen_has_sidebar():
     # We can't test the full DOM without mounting, but we can check
     # that the sidebar list is defined in the class
     assert hasattr(screen, "_RESOURCE_TYPES")
-    assert screen._RESOURCE_TYPES == ["Pods", "Services", "Deployments", "ConfigMaps"]
+    assert "Pods" in screen._RESOURCE_TYPES
+    assert "Deployments" in screen._RESOURCE_TYPES
+    assert "Services" in screen._RESOURCE_TYPES
+    assert len(screen._RESOURCE_TYPES) == 16
 
 
 @pytest.mark.asyncio
@@ -138,11 +141,11 @@ async def test_sidebar_selection_changes_resource_type():
     async with app.run_test() as pilot:
         screen = app.screen
         assert isinstance(screen, ClusterScreen)
-        # Arrow down to Services, press Enter
+        # Arrow down to Deployments (second item), press Enter
         await pilot.press("down")
         await pilot.press("enter")
         await pilot.pause()
-        assert screen.current_resource_type == "Services"
+        assert screen.current_resource_type == "Deployments"
 
 
 @pytest.mark.asyncio
@@ -206,20 +209,20 @@ async def test_sidebar_up_down_updates_resources():
         # Start on Pods
         assert screen.current_resource_type == "Pods"
 
-        # Down arrow to Services
-        await pilot.press("down")
-        await pilot.pause()
-        assert screen.current_resource_type == "Services"
-
-        # Down arrow to Deployments
+        # Down arrow to Deployments (index 1)
         await pilot.press("down")
         await pilot.pause()
         assert screen.current_resource_type == "Deployments"
 
-        # Up arrow back to Services
+        # Down arrow to ReplicaSets (index 2)
+        await pilot.press("down")
+        await pilot.pause()
+        assert screen.current_resource_type == "ReplicaSets"
+
+        # Up arrow back to Deployments
         await pilot.press("up")
         await pilot.pause()
-        assert screen.current_resource_type == "Services"
+        assert screen.current_resource_type == "Deployments"
 
 
 @pytest.mark.asyncio

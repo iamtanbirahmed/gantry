@@ -215,7 +215,7 @@ class ClusterScreen(Screen):
     }
 
     #resource-type-sidebar {
-        width: 20;
+        width: 24;
         height: 100%;
         border-right: solid $accent;
         background: $panel;
@@ -285,7 +285,31 @@ class ClusterScreen(Screen):
     }
     """
 
-    _RESOURCE_TYPES = ["Pods", "Services", "Deployments", "ConfigMaps"]
+    _RESOURCE_TYPES = [
+        "Pods", "Deployments", "ReplicaSets", "StatefulSets", "DaemonSets",
+        "Jobs", "CronJobs", "Services", "Ingresses", "Endpoints",
+        "ConfigMaps", "Secrets", "PersistentVolumeClaims", "PersistentVolumes",
+        "Namespaces", "Nodes",
+    ]
+
+    _TYPE_SINGULAR = {
+        "Pods": "pod",
+        "Deployments": "deployment",
+        "ReplicaSets": "replicaset",
+        "StatefulSets": "statefulset",
+        "DaemonSets": "daemonset",
+        "Jobs": "job",
+        "CronJobs": "cronjob",
+        "Services": "service",
+        "Ingresses": "ingress",
+        "Endpoints": "endpoints",
+        "ConfigMaps": "configmap",
+        "Secrets": "secret",
+        "PersistentVolumeClaims": "persistentvolumeclaim",
+        "PersistentVolumes": "persistentvolume",
+        "Namespaces": "namespace",
+        "Nodes": "node",
+    }
 
     current_resource_type = reactive("Pods", init=False)
     current_namespace = reactive("default")
@@ -301,10 +325,7 @@ class ClusterScreen(Screen):
         self._selected_row: Optional[str] = None
         self._resource_data: List[Dict[str, Any]] = []
         self._all_resources: Dict[str, List[Dict[str, Any]]] = {
-            "Pods": [],
-            "Services": [],
-            "Deployments": [],
-            "ConfigMaps": [],
+            t: [] for t in self._RESOURCE_TYPES
         }
         self._fetch_id: int = 0
 
@@ -314,9 +335,21 @@ class ClusterScreen(Screen):
         with Horizontal(id="main-container"):
             yield ListView(
                 ListItem(Label("Pods")),
-                ListItem(Label("Services")),
                 ListItem(Label("Deployments")),
+                ListItem(Label("ReplicaSets")),
+                ListItem(Label("StatefulSets")),
+                ListItem(Label("DaemonSets")),
+                ListItem(Label("Jobs")),
+                ListItem(Label("CronJobs")),
+                ListItem(Label("Services")),
+                ListItem(Label("Ingresses")),
+                ListItem(Label("Endpoints")),
                 ListItem(Label("ConfigMaps")),
+                ListItem(Label("Secrets")),
+                ListItem(Label("PersistentVolumeClaims")),
+                ListItem(Label("PersistentVolumes")),
+                ListItem(Label("Namespaces")),
+                ListItem(Label("Nodes")),
                 id="resource-type-sidebar",
                 initial_index=0,
             )
@@ -424,12 +457,36 @@ class ClusterScreen(Screen):
         try:
             if resource_type == "Pods":
                 resources = k8s.list_pods(namespace, context=context)
-            elif resource_type == "Services":
-                resources = k8s.list_services(namespace, context=context)
             elif resource_type == "Deployments":
                 resources = k8s.list_deployments(namespace, context=context)
+            elif resource_type == "ReplicaSets":
+                resources = k8s.list_replicasets(namespace, context=context)
+            elif resource_type == "StatefulSets":
+                resources = k8s.list_statefulsets(namespace, context=context)
+            elif resource_type == "DaemonSets":
+                resources = k8s.list_daemonsets(namespace, context=context)
+            elif resource_type == "Jobs":
+                resources = k8s.list_jobs(namespace, context=context)
+            elif resource_type == "CronJobs":
+                resources = k8s.list_cronjobs(namespace, context=context)
+            elif resource_type == "Services":
+                resources = k8s.list_services(namespace, context=context)
+            elif resource_type == "Ingresses":
+                resources = k8s.list_ingresses(namespace, context=context)
+            elif resource_type == "Endpoints":
+                resources = k8s.list_endpoints(namespace, context=context)
             elif resource_type == "ConfigMaps":
                 resources = k8s.list_configmaps(namespace, context=context)
+            elif resource_type == "Secrets":
+                resources = k8s.list_secrets(namespace, context=context)
+            elif resource_type == "PersistentVolumeClaims":
+                resources = k8s.list_persistentvolumeclaims(namespace, context=context)
+            elif resource_type == "PersistentVolumes":
+                resources = k8s.list_persistentvolumes(context=context)
+            elif resource_type == "Namespaces":
+                resources = k8s.list_namespace_resources(context=context)
+            elif resource_type == "Nodes":
+                resources = k8s.list_nodes(context=context)
 
             # Filter out error entries
             resources = [r for r in resources if "error" not in r]
@@ -471,13 +528,6 @@ class ClusterScreen(Screen):
             else:
                 columns = ["Name", "Status", "Ready", "Restarts"]
                 keys = ["name", "status", "ready", "restarts"]
-        elif resource_type == "Services":
-            if is_all_namespaces:
-                columns = ["Name", "Namespace", "Type", "Cluster IP"]
-                keys = ["name", "namespace", "type", "cluster_ip"]
-            else:
-                columns = ["Name", "Type", "Cluster IP"]
-                keys = ["name", "type", "cluster_ip"]
         elif resource_type == "Deployments":
             if is_all_namespaces:
                 columns = ["Name", "Namespace", "Replicas", "Ready", "Available"]
@@ -485,6 +535,62 @@ class ClusterScreen(Screen):
             else:
                 columns = ["Name", "Replicas", "Ready", "Available"]
                 keys = ["name", "replicas", "ready_replicas", "available_replicas"]
+        elif resource_type == "ReplicaSets":
+            if is_all_namespaces:
+                columns = ["Name", "Namespace", "Desired", "Ready", "Available"]
+                keys = ["name", "namespace", "desired", "ready", "available"]
+            else:
+                columns = ["Name", "Desired", "Ready", "Available"]
+                keys = ["name", "desired", "ready", "available"]
+        elif resource_type == "StatefulSets":
+            if is_all_namespaces:
+                columns = ["Name", "Namespace", "Ready", "Age"]
+                keys = ["name", "namespace", "ready", "age"]
+            else:
+                columns = ["Name", "Ready", "Age"]
+                keys = ["name", "ready", "age"]
+        elif resource_type == "DaemonSets":
+            if is_all_namespaces:
+                columns = ["Name", "Namespace", "Desired", "Ready", "Node Selector"]
+                keys = ["name", "namespace", "desired", "ready", "node_selector"]
+            else:
+                columns = ["Name", "Desired", "Ready", "Node Selector"]
+                keys = ["name", "desired", "ready", "node_selector"]
+        elif resource_type == "Jobs":
+            if is_all_namespaces:
+                columns = ["Name", "Namespace", "Completions", "Duration", "Status"]
+                keys = ["name", "namespace", "completions", "duration", "status"]
+            else:
+                columns = ["Name", "Completions", "Duration", "Status"]
+                keys = ["name", "completions", "duration", "status"]
+        elif resource_type == "CronJobs":
+            if is_all_namespaces:
+                columns = ["Name", "Namespace", "Schedule", "Last Run", "Active"]
+                keys = ["name", "namespace", "schedule", "last_run", "active"]
+            else:
+                columns = ["Name", "Schedule", "Last Run", "Active"]
+                keys = ["name", "schedule", "last_run", "active"]
+        elif resource_type == "Services":
+            if is_all_namespaces:
+                columns = ["Name", "Namespace", "Type", "Cluster IP"]
+                keys = ["name", "namespace", "type", "cluster_ip"]
+            else:
+                columns = ["Name", "Type", "Cluster IP"]
+                keys = ["name", "type", "cluster_ip"]
+        elif resource_type == "Ingresses":
+            if is_all_namespaces:
+                columns = ["Name", "Namespace", "Class", "Hosts", "Address"]
+                keys = ["name", "namespace", "class", "hosts", "address"]
+            else:
+                columns = ["Name", "Class", "Hosts", "Address"]
+                keys = ["name", "class", "hosts", "address"]
+        elif resource_type == "Endpoints":
+            if is_all_namespaces:
+                columns = ["Name", "Namespace", "Endpoints"]
+                keys = ["name", "namespace", "endpoints"]
+            else:
+                columns = ["Name", "Endpoints"]
+                keys = ["name", "endpoints"]
         elif resource_type == "ConfigMaps":
             if is_all_namespaces:
                 columns = ["Name", "Namespace", "Keys"]
@@ -492,6 +598,29 @@ class ClusterScreen(Screen):
             else:
                 columns = ["Name", "Keys"]
                 keys = ["name", "key_count"]
+        elif resource_type == "Secrets":
+            if is_all_namespaces:
+                columns = ["Name", "Namespace", "Type", "Keys"]
+                keys = ["name", "namespace", "type", "keys"]
+            else:
+                columns = ["Name", "Type", "Keys"]
+                keys = ["name", "type", "keys"]
+        elif resource_type == "PersistentVolumeClaims":
+            if is_all_namespaces:
+                columns = ["Name", "Namespace", "Status", "Volume", "Capacity"]
+                keys = ["name", "namespace", "status", "volume", "capacity"]
+            else:
+                columns = ["Name", "Status", "Volume", "Capacity"]
+                keys = ["name", "status", "volume", "capacity"]
+        elif resource_type == "PersistentVolumes":
+            columns = ["Name", "Capacity", "Access Modes", "Status"]
+            keys = ["name", "capacity", "access_modes", "status"]
+        elif resource_type == "Namespaces":
+            columns = ["Name", "Status", "Age"]
+            keys = ["name", "status", "age"]
+        elif resource_type == "Nodes":
+            columns = ["Name", "Status", "Roles", "Version"]
+            keys = ["name", "status", "roles", "version"]
         else:
             return
 
@@ -525,7 +654,7 @@ class ClusterScreen(Screen):
         if 0 <= row_index < len(self._resource_data):
             resource = self._resource_data[row_index]
             resource_name = resource.get("name", "Unknown")
-            resource_type = self.current_resource_type.rstrip("s")  # Remove trailing 's'
+            resource_type = self._TYPE_SINGULAR.get(self.current_resource_type, self.current_resource_type.lower())
             # Use row's namespace if in all-namespace mode, otherwise use current namespace
             namespace = resource.get("namespace", self.current_namespace) if self.current_namespace == "all" else self.current_namespace
 
