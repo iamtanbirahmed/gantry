@@ -565,6 +565,18 @@ class TestListStatefulSets:
         result = k8s.list_statefulsets()
         assert result[0]["type"] == "missing_kubeconfig"
 
+    @patch("gantry.k8s.config.load_kube_config")
+    @patch("gantry.k8s.client.AppsV1Api")
+    def test_list_statefulsets_all_namespaces(self, mock_api_class, mock_load):
+        ss_list = MagicMock()
+        ss_list.items = []
+        mock_api = MagicMock()
+        mock_api.list_stateful_set_for_all_namespaces.return_value = ss_list
+        mock_api_class.return_value = mock_api
+        result = k8s.list_statefulsets(namespace="all")
+        assert result == []
+        mock_api.list_stateful_set_for_all_namespaces.assert_called_once()
+
 
 class TestListDaemonSets:
     """Tests for list_daemonsets function."""
@@ -598,6 +610,18 @@ class TestListDaemonSets:
         mock_load.side_effect = config.config_exception.ConfigException("No kubeconfig")
         result = k8s.list_daemonsets()
         assert result[0]["type"] == "missing_kubeconfig"
+
+    @patch("gantry.k8s.config.load_kube_config")
+    @patch("gantry.k8s.client.AppsV1Api")
+    def test_list_daemonsets_all_namespaces(self, mock_api_class, mock_load):
+        ds_list = MagicMock()
+        ds_list.items = []
+        mock_api = MagicMock()
+        mock_api.list_daemon_set_for_all_namespaces.return_value = ds_list
+        mock_api_class.return_value = mock_api
+        result = k8s.list_daemonsets(namespace="all")
+        assert result == []
+        mock_api.list_daemon_set_for_all_namespaces.assert_called_once()
 
 
 class TestListJobs:
@@ -684,6 +708,18 @@ class TestListCronJobs:
         result = k8s.list_cronjobs()
         assert result[0]["type"] == "missing_kubeconfig"
 
+    @patch("gantry.k8s.config.load_kube_config")
+    @patch("gantry.k8s.client.BatchV1Api")
+    def test_list_cronjobs_all_namespaces(self, mock_api_class, mock_load):
+        cj_list = MagicMock()
+        cj_list.items = []
+        mock_api = MagicMock()
+        mock_api.list_cron_job_for_all_namespaces.return_value = cj_list
+        mock_api_class.return_value = mock_api
+        result = k8s.list_cronjobs(namespace="all")
+        assert result == []
+        mock_api.list_cron_job_for_all_namespaces.assert_called_once()
+
 
 class TestListIngresses:
     """Tests for list_ingresses function."""
@@ -721,6 +757,18 @@ class TestListIngresses:
         result = k8s.list_ingresses()
         assert result[0]["type"] == "missing_kubeconfig"
 
+    @patch("gantry.k8s.config.load_kube_config")
+    @patch("gantry.k8s.client.NetworkingV1Api")
+    def test_list_ingresses_all_namespaces(self, mock_api_class, mock_load):
+        ing_list = MagicMock()
+        ing_list.items = []
+        mock_api = MagicMock()
+        mock_api.list_ingress_for_all_namespaces.return_value = ing_list
+        mock_api_class.return_value = mock_api
+        result = k8s.list_ingresses(namespace="all")
+        assert result == []
+        mock_api.list_ingress_for_all_namespaces.assert_called_once()
+
 
 class TestListEndpoints:
     """Tests for list_endpoints function."""
@@ -751,6 +799,18 @@ class TestListEndpoints:
         mock_load.side_effect = config.config_exception.ConfigException("No kubeconfig")
         result = k8s.list_endpoints()
         assert result[0]["type"] == "missing_kubeconfig"
+
+    @patch("gantry.k8s.config.load_kube_config")
+    @patch("gantry.k8s.client.CoreV1Api")
+    def test_list_endpoints_all_namespaces(self, mock_api_class, mock_load):
+        ep_list = MagicMock()
+        ep_list.items = []
+        mock_api = MagicMock()
+        mock_api.list_endpoints_for_all_namespaces.return_value = ep_list
+        mock_api_class.return_value = mock_api
+        result = k8s.list_endpoints(namespace="all")
+        assert result == []
+        mock_api.list_endpoints_for_all_namespaces.assert_called_once()
 
 
 class TestListSecrets:
@@ -784,6 +844,18 @@ class TestListSecrets:
         mock_load.side_effect = config.config_exception.ConfigException("No kubeconfig")
         result = k8s.list_secrets()
         assert result[0]["type"] == "missing_kubeconfig"
+
+    @patch("gantry.k8s.config.load_kube_config")
+    @patch("gantry.k8s.client.CoreV1Api")
+    def test_list_secrets_all_namespaces(self, mock_api_class, mock_load):
+        s_list = MagicMock()
+        s_list.items = []
+        mock_api = MagicMock()
+        mock_api.list_secret_for_all_namespaces.return_value = s_list
+        mock_api_class.return_value = mock_api
+        result = k8s.list_secrets(namespace="all")
+        assert result == []
+        mock_api.list_secret_for_all_namespaces.assert_called_once()
 
 
 class TestListPersistentVolumeClaims:
@@ -819,6 +891,18 @@ class TestListPersistentVolumeClaims:
         mock_load.side_effect = config.config_exception.ConfigException("No kubeconfig")
         result = k8s.list_persistentvolumeclaims()
         assert result[0]["type"] == "missing_kubeconfig"
+
+    @patch("gantry.k8s.config.load_kube_config")
+    @patch("gantry.k8s.client.CoreV1Api")
+    def test_list_pvcs_all_namespaces(self, mock_api_class, mock_load):
+        pvc_list = MagicMock()
+        pvc_list.items = []
+        mock_api = MagicMock()
+        mock_api.list_persistent_volume_claim_for_all_namespaces.return_value = pvc_list
+        mock_api_class.return_value = mock_api
+        result = k8s.list_persistentvolumeclaims(namespace="all")
+        assert result == []
+        mock_api.list_persistent_volume_claim_for_all_namespaces.assert_called_once()
 
 
 class TestListPersistentVolumes:

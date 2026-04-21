@@ -729,10 +729,11 @@ def list_nodes(context: Optional[str] = None) -> List[Dict[str, Any]]:
 
         result = []
         for node in nodes.items:
-            node_status = next(
-                (c.type for c in (node.status.conditions or []) if c.status == "True"),
-                "Unknown",
+            ready_cond = next(
+                (c for c in (node.status.conditions or []) if c.type == "Ready"),
+                None,
             )
+            node_status = "Ready" if (ready_cond and ready_cond.status == "True") else "NotReady"
             labels = node.metadata.labels or {}
             roles = ",".join(
                 k.replace("node-role.kubernetes.io/", "")
