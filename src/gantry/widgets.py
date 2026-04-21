@@ -2,8 +2,9 @@
 
 import logging
 from typing import Any, Dict, List, Optional, Callable
-from textual.widgets import DataTable, Static, Input
-from textual.containers import Container, Horizontal, Vertical
+from textual.widget import Widget
+from textual.widgets import DataTable, Static, Input, ListView, ListItem, Label, Collapsible
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.message import Message
 from textual.events import Key
 from textual.css.query import NoMatches
@@ -347,3 +348,149 @@ class KeybindingsBar(Static):
 
         # Fallback (should not reach here)
         return ""
+
+
+class ResourceSidebar(Widget):
+    """Grouped, collapsible sidebar for Kubernetes resource type selection."""
+
+    GROUPS: list[tuple[str, list[tuple[str, bool]]]] = [
+        ("Workloads", [
+            ("Pods", True),
+            ("Deployments", True),
+            ("Daemon Sets", False),
+            ("Stateful Sets", False),
+            ("Replica Sets", False),
+            ("Replication Controllers", False),
+            ("Jobs", False),
+            ("Cron Jobs", False),
+        ]),
+        ("Service", [
+            ("Services", True),
+            ("Ingresses", False),
+            ("Ingress Classes", False),
+        ]),
+        ("Config & Storage", [
+            ("Config Maps", True),
+            ("Secrets", False),
+            ("Persistent Volume Claims", False),
+            ("Storage Classes", False),
+        ]),
+        ("Cluster", [
+            ("Nodes", False),
+            ("Namespaces", False),
+            ("Events", False),
+            ("Roles", False),
+            ("Role Bindings", False),
+            ("Cluster Roles", False),
+            ("Cluster Role Bindings", False),
+            ("Service Accounts", False),
+            ("Network Policies", False),
+            ("Persistent Volumes", False),
+        ]),
+        ("Custom Resource Definitions", [
+            ("CRDs", False),
+        ]),
+    ]
+
+    CSS = """
+    ResourceSidebar {
+        width: 24;
+        height: 100%;
+        border-right: solid $accent;
+        background: $panel;
+        overflow-y: auto;
+    }
+
+    ResourceSidebar Collapsible {
+        border: none;
+        padding: 0;
+        background: $panel;
+    }
+
+    ResourceSidebar Collapsible > CollapsibleTitle {
+        color: $accent;
+        text-style: bold;
+        padding: 0 1;
+        background: $panel;
+    }
+
+    ResourceSidebar ListView {
+        border: none;
+        background: $panel;
+        padding: 0;
+        height: auto;
+    }
+
+    ResourceSidebar ListItem {
+        padding: 0 2;
+        height: 1;
+    }
+
+    ResourceSidebar ListItem > Label {
+        color: $text;
+        width: 100%;
+    }
+
+    ResourceSidebar ListItem.stub-item > Label {
+        color: $text-muted;
+        opacity: 0.5;
+    }
+    """
+
+    class ResourceSelected(Message):
+        """Posted when the user highlights a resource type in the sidebar."""
+
+        def __init__(self, resource_type: str, implemented: bool) -> None:
+            super().__init__()
+            self.resource_type = resource_type
+            self.implemented = implemented
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        # Maps ListView widget ID → list of (name, implemented) for that group
+        self._list_view_items: dict[str, list[tuple[str, bool]]] = {}
+
+    def compose(self):
+        with VerticalScroll():
+            for group_name, items in self.GROUPS:
+                lv_id = (
+                    "sidebar-"
+                    + group_name.lower()
+                    .replace(" ", "-")
+                    .replace("&", "and")
+                    .replace("(", "")
+                    .replace(")", "")
+                )
+                self._list_view_items[lv_id] = items
+                with Collapsible(title=group_name):
+                    yield ListView(
+                        *[
+                            ListItem(
+                                Label(name),
+                                classes="stub-item" if not impl else "",
+                            )
+                            for name, impl in items
+                        ],
+                        id=lv_id,
+                    )
+
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
+        """Post ResourceSelected when the user moves highlight in any group ListView."""
+        lv_id = event.list_view.id
+        if lv_id not in self._list_view_items:
+            return
+        idx = event.list_view.index
+        if idx is None:
+            return
+        items = self._list_view_items[lv_id]
+        if 0 <= idx < len(items):
+            name, implemented = items[idx]
+            self.post_message(self.ResourceSelected(name, implemented))
+
+    def _on_key(self, event) -> None:
+        """Forward right-arrow to screen panel navigation."""
+        if event.key == "right":
+            event.stop()
+            self.screen.action_focus_next_panel()
+        else:
+            super()._on_key(event)

@@ -334,3 +334,46 @@ def test_keybindings_bar_helm_normal():
     # Should NOT show cluster-specific bindings
     assert "Describe" not in output
     assert "Logs" not in output
+
+
+import pytest
+from gantry.widgets import ResourceSidebar
+
+
+def test_resource_sidebar_instantiates():
+    sidebar = ResourceSidebar()
+    assert sidebar is not None
+
+
+def test_resource_sidebar_has_five_groups():
+    sidebar = ResourceSidebar()
+    assert len(sidebar.GROUPS) == 5
+
+
+def test_resource_sidebar_pods_implemented():
+    """Pods must be in Workloads and marked implemented."""
+    sidebar = ResourceSidebar()
+    workloads = next(g for g in sidebar.GROUPS if g[0] == "Workloads")
+    items = {name: impl for name, impl in workloads[1]}
+    assert items["Pods"] is True
+
+
+def test_resource_sidebar_daemon_sets_stub():
+    """Daemon Sets must be in Workloads and marked as stub."""
+    sidebar = ResourceSidebar()
+    workloads = next(g for g in sidebar.GROUPS if g[0] == "Workloads")
+    items = {name: impl for name, impl in workloads[1]}
+    assert items["Daemon Sets"] is False
+
+
+def test_resource_sidebar_resource_selected_message():
+    """ResourceSelected carries resource_type and implemented flag."""
+    msg = ResourceSidebar.ResourceSelected("Pods", True)
+    assert msg.resource_type == "Pods"
+    assert msg.implemented is True
+
+
+def test_resource_sidebar_stub_resource_selected_message():
+    msg = ResourceSidebar.ResourceSelected("Nodes", False)
+    assert msg.resource_type == "Nodes"
+    assert msg.implemented is False
