@@ -112,7 +112,7 @@ async def test_tab_switches_back_to_cluster_screen():
         assert isinstance(app.screen, ClusterScreen)
 
 
-def test_cluster_screen_has_sidebar():
+def test_cluster_screen_has_dispatch_tables():
     """Test that ClusterScreen has dispatch tables for resource types."""
     screen = ClusterScreen()
     # After migration to ResourceSidebar, dispatch tables replace _RESOURCE_TYPES

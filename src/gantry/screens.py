@@ -215,7 +215,6 @@ class ClusterScreen(Screen):
     }
 
     #resource-type-sidebar {
-        width: 20;
         height: 100%;
         border-right: solid $accent;
         background: $panel;
@@ -487,16 +486,16 @@ class ClusterScreen(Screen):
 
     def on_resource_sidebar_resource_selected(self, event: ResourceSidebar.ResourceSelected) -> None:
         """Handle resource type selection from the sidebar."""
+        if self.current_resource_type == event.resource_type:
+            return  # Already showing this type, skip redundant fetch
+        self.current_resource_type = event.resource_type
         if not event.implemented:
-            # Update type so status bar reflects the selection, but clear table
-            self.current_resource_type = event.resource_type
             table: ResourceTable = self.query_one("#resource-table", ResourceTable)
             table.clear(columns=True)
             self.connection_status = "Not implemented"
             self._update_status_bar()
             return
-        # Setting current_resource_type triggers watch_current_resource_type → _refresh_resources
-        self.current_resource_type = event.resource_type
+        self._refresh_resources()
 
     def action_focus_search(self) -> None:
         """Show and focus the search input (vim-style)."""
