@@ -459,6 +459,15 @@ class ResourceSidebar(Widget):
             ): items
             for group_name, items in self.GROUPS
         }
+        # Guard: suppress auto-highlight events fired during mount
+        self._ready: bool = False
+
+    def on_mount(self) -> None:
+        """Allow ResourceSelected events after the initial mount cycle completes."""
+        self.call_after_refresh(self._set_ready)
+
+    def _set_ready(self) -> None:
+        self._ready = True
 
     def compose(self):
         with VerticalScroll():
@@ -485,6 +494,8 @@ class ResourceSidebar(Widget):
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         """Post ResourceSelected when the user moves highlight in any group ListView."""
+        if not self._ready:
+            return
         lv_id = event.list_view.id
         if lv_id not in self._list_view_items:
             return
@@ -496,10 +507,18 @@ class ResourceSidebar(Widget):
             name, implemented = items[idx]
             self.post_message(self.ResourceSelected(name, implemented))
 
-    def _on_key(self, event: Key) -> None:
+    def focus_first_item(self) -> None:
+        """Focus the first inner ListView (Workloads group)."""
+        try:
+            first_lv_id = next(iter(self._list_view_items))
+            self.query_one(f"#{first_lv_id}", ListView).focus()
+        except (StopIteration, Exception):
+            pass
+
+    async def _on_key(self, event: Key) -> None:
         """Forward right-arrow to screen panel navigation."""
         if event.key == "right":
             event.stop()
             self.screen.action_focus_next_panel()
         else:
-            super()._on_key(event)
+            await super()._on_key(event)

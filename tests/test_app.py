@@ -113,12 +113,15 @@ async def test_tab_switches_back_to_cluster_screen():
 
 
 def test_cluster_screen_has_sidebar():
-    """Test that ClusterScreen has a resource type sidebar."""
+    """Test that ClusterScreen has dispatch tables for resource types."""
     screen = ClusterScreen()
-    # We can't test the full DOM without mounting, but we can check
-    # that the sidebar list is defined in the class
-    assert hasattr(screen, "_RESOURCE_TYPES")
-    assert screen._RESOURCE_TYPES == ["Pods", "Services", "Deployments", "ConfigMaps"]
+    # After migration to ResourceSidebar, dispatch tables replace _RESOURCE_TYPES
+    assert hasattr(screen, "_FETCH_FNS")
+    assert hasattr(screen, "_COLUMN_DEFS")
+    assert "Pods" in screen._FETCH_FNS
+    assert "Services" in screen._FETCH_FNS
+    assert "Deployments" in screen._FETCH_FNS
+    assert "Config Maps" in screen._FETCH_FNS
 
 
 @pytest.mark.asyncio
@@ -138,11 +141,12 @@ async def test_sidebar_selection_changes_resource_type():
     async with app.run_test() as pilot:
         screen = app.screen
         assert isinstance(screen, ClusterScreen)
-        # Arrow down to Services, press Enter
-        await pilot.press("down")
-        await pilot.press("enter")
+        # Allow the _ready flag to be set after the initial mount cycle
         await pilot.pause()
-        assert screen.current_resource_type == "Services"
+        # Arrow down from Pods → Deployments (second item in Workloads group)
+        await pilot.press("down")
+        await pilot.pause()
+        assert screen.current_resource_type == "Deployments"
 
 
 @pytest.mark.asyncio
@@ -195,31 +199,34 @@ async def test_panel_navigation_left_arrow():
 async def test_sidebar_up_down_updates_resources():
     """Test that navigating sidebar with arrows immediately updates resource type.
 
-    Previously, Enter was required to apply the selection. Now up/down
-    navigation immediately triggers a resource type change and fetch.
+    Arrow navigation within a group fires ResourceSelected on each highlight change.
+    The Workloads group contains: Pods, Deployments, Daemon Sets, ...
     """
     app = GantryApp()
     async with app.run_test() as pilot:
         screen = app.screen
         assert isinstance(screen, ClusterScreen)
 
+        # Allow the _ready flag to be set after the initial mount cycle
+        await pilot.pause()
+
         # Start on Pods
         assert screen.current_resource_type == "Pods"
 
-        # Down arrow to Services
-        await pilot.press("down")
-        await pilot.pause()
-        assert screen.current_resource_type == "Services"
-
-        # Down arrow to Deployments
+        # Down arrow → Deployments (second item in Workloads group)
         await pilot.press("down")
         await pilot.pause()
         assert screen.current_resource_type == "Deployments"
 
-        # Up arrow back to Services
+        # Down arrow → Daemon Sets (third item, stub)
+        await pilot.press("down")
+        await pilot.pause()
+        assert screen.current_resource_type == "Daemon Sets"
+
+        # Up arrow back to Deployments
         await pilot.press("up")
         await pilot.pause()
-        assert screen.current_resource_type == "Services"
+        assert screen.current_resource_type == "Deployments"
 
 
 @pytest.mark.asyncio
@@ -373,3 +380,26 @@ def test_resource_sidebar_stub_resource_selected_message():
     msg = ResourceSidebar.ResourceSelected("Nodes", False)
     assert msg.resource_type == "Nodes"
     assert msg.implemented is False
+
+
+@pytest.mark.asyncio
+async def test_cluster_screen_mounts_resource_sidebar():
+    """ClusterScreen must contain a ResourceSidebar, not a bare ListView with id resource-type-sidebar."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+        sidebar = screen.query_one(ResourceSidebar)
+        assert sidebar is not None
+
+
+@pytest.mark.asyncio
+async def test_cluster_screen_no_legacy_sidebar():
+    """The old #resource-type-sidebar ListView must not exist (element is now ResourceSidebar)."""
+    from textual.css.query import QueryError
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        # Querying for a ListView at this ID must fail because the element
+        # is now a ResourceSidebar, not a ListView.
+        with pytest.raises(QueryError):
+            app.screen.query_one("#resource-type-sidebar", ListView)

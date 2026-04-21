@@ -4,7 +4,7 @@ import logging
 from typing import Any, Dict, List, Optional
 from textual.screen import Screen, ModalScreen
 from textual.containers import Container, Vertical, Horizontal, ScrollableContainer, VerticalScroll
-from textual.widgets import Label, Static, Button, OptionList, Input, TextArea, ListView, ListItem
+from textual.widgets import Label, Static, Button, OptionList, Input, TextArea
 from textual.widgets.option_list import Option
 from textual.widget import Widget
 from textual.binding import Binding
@@ -14,7 +14,7 @@ from textual.reactive import reactive
 import json
 
 from gantry import k8s, state
-from gantry.widgets import ResourceTable, SearchInput, StatusBar, KeybindingsBar
+from gantry.widgets import ResourceTable, SearchInput, StatusBar, KeybindingsBar, ResourceSidebar
 
 logger = logging.getLogger(__name__)
 
@@ -285,7 +285,39 @@ class ClusterScreen(Screen):
     }
     """
 
-    _RESOURCE_TYPES = ["Pods", "Services", "Deployments", "ConfigMaps"]
+    _FETCH_FNS = {
+        "Pods": k8s.list_pods,
+        "Services": k8s.list_services,
+        "Deployments": k8s.list_deployments,
+        "Config Maps": k8s.list_configmaps,
+    }
+
+    _COLUMN_DEFS = {
+        "Pods": {
+            "default": (["Name", "Status", "Ready", "Restarts"], ["name", "status", "ready", "restarts"]),
+            "all": (["Name", "Namespace", "Status", "Ready", "Restarts"], ["name", "namespace", "status", "ready", "restarts"]),
+        },
+        "Services": {
+            "default": (["Name", "Type", "Cluster IP"], ["name", "type", "cluster_ip"]),
+            "all": (["Name", "Namespace", "Type", "Cluster IP"], ["name", "namespace", "type", "cluster_ip"]),
+        },
+        "Deployments": {
+            "default": (["Name", "Replicas", "Ready", "Available"], ["name", "replicas", "ready_replicas", "available_replicas"]),
+            "all": (["Name", "Namespace", "Replicas", "Ready", "Available"], ["name", "namespace", "replicas", "ready_replicas", "available_replicas"]),
+        },
+        "Config Maps": {
+            "default": (["Name", "Keys"], ["name", "key_count"]),
+            "all": (["Name", "Namespace", "Keys"], ["name", "namespace", "key_count"]),
+        },
+    }
+
+    # Maps sidebar display names to the type string k8s.describe_resource expects
+    _DESCRIBE_TYPE_MAP = {
+        "Pods": "Pod",
+        "Services": "Service",
+        "Deployments": "Deployment",
+        "Config Maps": "ConfigMap",
+    }
 
     current_resource_type = reactive("Pods", init=False)
     current_namespace = reactive("default")
@@ -300,26 +332,14 @@ class ClusterScreen(Screen):
         super().__init__(*args, **kwargs)
         self._selected_row: Optional[str] = None
         self._resource_data: List[Dict[str, Any]] = []
-        self._all_resources: Dict[str, List[Dict[str, Any]]] = {
-            "Pods": [],
-            "Services": [],
-            "Deployments": [],
-            "ConfigMaps": [],
-        }
+        self._all_resources: Dict[str, List[Dict[str, Any]]] = {}
         self._fetch_id: int = 0
 
     def compose(self):
         """Compose the cluster screen."""
         # Main container with sidebar, content, and detail panel
         with Horizontal(id="main-container"):
-            yield ListView(
-                ListItem(Label("Pods")),
-                ListItem(Label("Services")),
-                ListItem(Label("Deployments")),
-                ListItem(Label("ConfigMaps")),
-                id="resource-type-sidebar",
-                initial_index=0,
-            )
+            yield ResourceSidebar(id="resource-type-sidebar")
             with Vertical(id="content-area"):
                 yield ResourceTable(id="resource-table")
                 yield SearchInput(id="search-input")
@@ -341,7 +361,7 @@ class ClusterScreen(Screen):
         self._load_context_info()
         # Give focus to the sidebar
         self.call_after_refresh(
-            lambda: self.query_one("#resource-type-sidebar", ListView).focus()
+            lambda: self.query_one(ResourceSidebar).focus_first_item()
         )
         # Initialize panel focus to sidebar
         self.current_panel = "sidebar"
@@ -422,19 +442,14 @@ class ClusterScreen(Screen):
         resources = []
         status = "Connected"
         try:
-            if resource_type == "Pods":
-                resources = k8s.list_pods(namespace, context=context)
-            elif resource_type == "Services":
-                resources = k8s.list_services(namespace, context=context)
-            elif resource_type == "Deployments":
-                resources = k8s.list_deployments(namespace, context=context)
-            elif resource_type == "ConfigMaps":
-                resources = k8s.list_configmaps(namespace, context=context)
+            fetch_fn = self._FETCH_FNS.get(resource_type)
+            if fetch_fn is None:
+                return
+            resources = fetch_fn(namespace, context=context)
 
             # Filter out error entries
             resources = [r for r in resources if "error" not in r]
 
-            # Store and display
             self._all_resources[resource_type] = resources
             logger.debug(f"_fetch_resources_worker completed: {len(resources)} {resource_type} fetched")
             self.app.call_from_thread(self._display_resources, fetch_id, resource_type, namespace, resources)
@@ -453,7 +468,6 @@ class ClusterScreen(Screen):
 
     def _display_resources(self, fetch_id: int, resource_type: str, namespace: str, resources: List[Dict[str, Any]]) -> None:
         """Display resources in the table."""
-        # Ignore stale fetch results - only render if this is the current request
         if fetch_id != self._fetch_id:
             return
         if resource_type != self.current_resource_type or namespace != self.current_namespace:
@@ -461,52 +475,28 @@ class ClusterScreen(Screen):
 
         table: ResourceTable = self.query_one("#resource-table", ResourceTable)
 
-        # Check if we're in all-namespace mode
-        is_all_namespaces = namespace == "all"
-
-        if resource_type == "Pods":
-            if is_all_namespaces:
-                columns = ["Name", "Namespace", "Status", "Ready", "Restarts"]
-                keys = ["name", "namespace", "status", "ready", "restarts"]
-            else:
-                columns = ["Name", "Status", "Ready", "Restarts"]
-                keys = ["name", "status", "ready", "restarts"]
-        elif resource_type == "Services":
-            if is_all_namespaces:
-                columns = ["Name", "Namespace", "Type", "Cluster IP"]
-                keys = ["name", "namespace", "type", "cluster_ip"]
-            else:
-                columns = ["Name", "Type", "Cluster IP"]
-                keys = ["name", "type", "cluster_ip"]
-        elif resource_type == "Deployments":
-            if is_all_namespaces:
-                columns = ["Name", "Namespace", "Replicas", "Ready", "Available"]
-                keys = ["name", "namespace", "replicas", "ready_replicas", "available_replicas"]
-            else:
-                columns = ["Name", "Replicas", "Ready", "Available"]
-                keys = ["name", "replicas", "ready_replicas", "available_replicas"]
-        elif resource_type == "ConfigMaps":
-            if is_all_namespaces:
-                columns = ["Name", "Namespace", "Keys"]
-                keys = ["name", "namespace", "key_count"]
-            else:
-                columns = ["Name", "Keys"]
-                keys = ["name", "key_count"]
-        else:
+        col_def = self._COLUMN_DEFS.get(resource_type)
+        if col_def is None:
             return
 
+        ns_key = "all" if namespace == "all" else "default"
+        columns, keys = col_def[ns_key]
+
         table.populate_resources(resources, columns, keys)
-        # Store resource data for actions like describe and logs
         self._resource_data = resources
 
-    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
-        """Handle sidebar up/down navigation - immediately update resource type.
-
-        This replaces on_list_view_selected (Enter-based) to trigger on every
-        up/down arrow press, providing live preview of resource types.
-        """
-        if event.list_view.id == "resource-type-sidebar" and event.list_view.index is not None:
-            self.current_resource_type = self._RESOURCE_TYPES[event.list_view.index]
+    def on_resource_sidebar_resource_selected(self, event: ResourceSidebar.ResourceSelected) -> None:
+        """Handle resource type selection from the sidebar."""
+        if not event.implemented:
+            # Update type so status bar reflects the selection, but clear table
+            self.current_resource_type = event.resource_type
+            table: ResourceTable = self.query_one("#resource-table", ResourceTable)
+            table.clear(columns=True)
+            self.connection_status = "Not implemented"
+            self._update_status_bar()
+            return
+        # Setting current_resource_type triggers watch_current_resource_type → _refresh_resources
+        self.current_resource_type = event.resource_type
 
     def action_focus_search(self) -> None:
         """Show and focus the search input (vim-style)."""
@@ -525,7 +515,7 @@ class ClusterScreen(Screen):
         if 0 <= row_index < len(self._resource_data):
             resource = self._resource_data[row_index]
             resource_name = resource.get("name", "Unknown")
-            resource_type = self.current_resource_type.rstrip("s")  # Remove trailing 's'
+            resource_type = self._DESCRIBE_TYPE_MAP.get(self.current_resource_type, self.current_resource_type)
             # Use row's namespace if in all-namespace mode, otherwise use current namespace
             namespace = resource.get("namespace", self.current_namespace) if self.current_namespace == "all" else self.current_namespace
 
@@ -717,7 +707,7 @@ class ClusterScreen(Screen):
         # Move focus to the target panel widget
         try:
             if next_panel == "sidebar":
-                self.query_one("#resource-type-sidebar", ListView).focus()
+                self.query_one(ResourceSidebar).focus_first_item()
             elif next_panel == "table":
                 self.query_one("#resource-table", ResourceTable).focus()
             elif next_panel == "detail":
@@ -751,7 +741,7 @@ class ClusterScreen(Screen):
         # Move focus to the target panel widget
         try:
             if prev_panel == "sidebar":
-                self.query_one("#resource-type-sidebar", ListView).focus()
+                self.query_one(ResourceSidebar).focus_first_item()
             elif prev_panel == "table":
                 self.query_one("#resource-table", ResourceTable).focus()
             elif prev_panel == "detail":
