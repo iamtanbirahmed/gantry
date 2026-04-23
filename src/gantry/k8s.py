@@ -4,6 +4,8 @@ import logging
 import os
 from typing import Any, Dict, List, Optional
 
+import yaml
+
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 
@@ -1019,6 +1021,98 @@ def describe_resource(
             "error": str(e),
             "type": "describe_resource_error",
         }
+
+
+def get_resource_yaml(
+    resource_type: str,
+    resource_name: str,
+    namespace: str = "default",
+) -> tuple[Optional[str], Optional[str]]:
+    """
+    Return (full_yaml, spec_yaml) for a Kubernetes resource.
+
+    full_yaml: complete object (metadata, spec, status).
+    spec_yaml: apiVersion/kind/metadata(name+namespace only)/spec — no status or managedFields.
+    Returns (None, None) on any error.
+    """
+    logger.debug(f"get_resource_yaml called for {resource_type}/{resource_name} in {namespace}")
+    try:
+        config.load_kube_config()
+        v1 = client.CoreV1Api()
+        apps_v1 = client.AppsV1Api()
+
+        resource_type_lower = resource_type.lower()
+        obj = None
+
+        if resource_type_lower == "pod":
+            obj = v1.read_namespaced_pod(name=resource_name, namespace=namespace)
+        elif resource_type_lower == "service":
+            obj = v1.read_namespaced_service(name=resource_name, namespace=namespace)
+        elif resource_type_lower == "deployment":
+            obj = apps_v1.read_namespaced_deployment(name=resource_name, namespace=namespace)
+        elif resource_type_lower == "configmap":
+            obj = v1.read_namespaced_config_map(name=resource_name, namespace=namespace)
+        elif resource_type_lower == "replicaset":
+            obj = apps_v1.read_namespaced_replica_set(name=resource_name, namespace=namespace)
+        elif resource_type_lower == "statefulset":
+            obj = apps_v1.read_namespaced_stateful_set(name=resource_name, namespace=namespace)
+        elif resource_type_lower == "daemonset":
+            obj = apps_v1.read_namespaced_daemon_set(name=resource_name, namespace=namespace)
+        elif resource_type_lower == "job":
+            batch_v1 = client.BatchV1Api()
+            obj = batch_v1.read_namespaced_job(name=resource_name, namespace=namespace)
+        elif resource_type_lower == "cronjob":
+            batch_v1 = client.BatchV1Api()
+            obj = batch_v1.read_namespaced_cron_job(name=resource_name, namespace=namespace)
+        elif resource_type_lower == "ingress":
+            networking_v1 = client.NetworkingV1Api()
+            obj = networking_v1.read_namespaced_ingress(name=resource_name, namespace=namespace)
+        elif resource_type_lower == "endpoints":
+            obj = v1.read_namespaced_endpoints(name=resource_name, namespace=namespace)
+        elif resource_type_lower == "secret":
+            obj = v1.read_namespaced_secret(name=resource_name, namespace=namespace)
+        elif resource_type_lower == "persistentvolumeclaim":
+            obj = v1.read_namespaced_persistent_volume_claim(name=resource_name, namespace=namespace)
+        elif resource_type_lower == "persistentvolume":
+            obj = v1.read_persistent_volume(name=resource_name)
+        elif resource_type_lower == "namespace":
+            obj = v1.read_namespace(name=resource_name)
+        elif resource_type_lower == "node":
+            obj = v1.read_node(name=resource_name)
+        else:
+            logger.warning(f"get_resource_yaml: unsupported resource type {resource_type!r}")
+            return (None, None)
+
+        raw_dict = client.ApiClient().sanitize_for_serialization(obj)
+
+        full_yaml = yaml.dump(raw_dict, default_flow_style=False, sort_keys=False)
+
+        metadata = raw_dict.get("metadata", {})
+        spec_dict: Dict[str, Any] = {
+            "apiVersion": raw_dict.get("apiVersion", ""),
+            "kind": raw_dict.get("kind", ""),
+            "metadata": {k: v for k, v in {
+                "name": metadata.get("name", ""),
+                "namespace": metadata.get("namespace"),
+            }.items() if v is not None},
+            "spec": raw_dict.get("spec", {}),
+        }
+        spec_yaml = yaml.dump(spec_dict, default_flow_style=False, sort_keys=False)
+
+        logger.debug(f"get_resource_yaml completed for {resource_type}/{resource_name}")
+        return (full_yaml, spec_yaml)
+
+    except config.config_exception.ConfigException:
+        logger.error("kubeconfig not found in get_resource_yaml")
+        return (None, None)
+    except ApiException as e:
+        if e.status == 404:
+            return (None, None)
+        logger.error(f"API error in get_resource_yaml: {e}", exc_info=True)
+        return (None, None)
+    except Exception as e:
+        logger.error(f"Error in get_resource_yaml: {e}", exc_info=True)
+        return (None, None)
 
 
 def get_pod_logs(

@@ -1008,3 +1008,132 @@ class TestListNodes:
         mock_load.side_effect = config.config_exception.ConfigException("No kubeconfig")
         result = k8s.list_nodes()
         assert result[0]["type"] == "missing_kubeconfig"
+
+
+class TestGetResourceYaml:
+    """Tests for get_resource_yaml function."""
+
+    @patch("gantry.k8s.config.load_kube_config")
+    @patch("gantry.k8s.client.ApiClient")
+    @patch("gantry.k8s.client.CoreV1Api")
+    def test_get_resource_yaml_pod_returns_tuple(
+        self, mock_core_api_class, mock_api_client_class, mock_config
+    ):
+        pod = MagicMock()
+        mock_core_api = MagicMock()
+        mock_core_api.read_namespaced_pod.return_value = pod
+        mock_core_api_class.return_value = mock_core_api
+        raw_dict = {
+            "apiVersion": "v1", "kind": "Pod",
+            "metadata": {"name": "test-pod", "namespace": "default", "managedFields": []},
+            "spec": {"containers": [{"name": "nginx", "image": "nginx:latest"}]},
+            "status": {"phase": "Running"},
+        }
+        mock_api_client_instance = MagicMock()
+        mock_api_client_instance.sanitize_for_serialization.return_value = raw_dict
+        mock_api_client_class.return_value = mock_api_client_instance
+
+        full_yaml, spec_yaml = k8s.get_resource_yaml("pod", "test-pod", "default")
+
+        assert isinstance(full_yaml, str)
+        assert isinstance(spec_yaml, str)
+
+    @patch("gantry.k8s.config.load_kube_config")
+    @patch("gantry.k8s.client.ApiClient")
+    @patch("gantry.k8s.client.CoreV1Api")
+    def test_get_resource_yaml_full_contains_status(
+        self, mock_core_api_class, mock_api_client_class, mock_config
+    ):
+        pod = MagicMock()
+        mock_core_api = MagicMock()
+        mock_core_api.read_namespaced_pod.return_value = pod
+        mock_core_api_class.return_value = mock_core_api
+        raw_dict = {
+            "apiVersion": "v1", "kind": "Pod",
+            "metadata": {"name": "test-pod", "namespace": "default"},
+            "spec": {"containers": []},
+            "status": {"phase": "Running"},
+        }
+        mock_api_client_instance = MagicMock()
+        mock_api_client_instance.sanitize_for_serialization.return_value = raw_dict
+        mock_api_client_class.return_value = mock_api_client_instance
+
+        full_yaml, spec_yaml = k8s.get_resource_yaml("pod", "test-pod", "default")
+
+        assert "status:" in full_yaml
+        assert "phase: Running" in full_yaml
+
+    @patch("gantry.k8s.config.load_kube_config")
+    @patch("gantry.k8s.client.ApiClient")
+    @patch("gantry.k8s.client.CoreV1Api")
+    def test_get_resource_yaml_spec_excludes_status_and_managed_fields(
+        self, mock_core_api_class, mock_api_client_class, mock_config
+    ):
+        pod = MagicMock()
+        mock_core_api = MagicMock()
+        mock_core_api.read_namespaced_pod.return_value = pod
+        mock_core_api_class.return_value = mock_core_api
+        raw_dict = {
+            "apiVersion": "v1", "kind": "Pod",
+            "metadata": {"name": "test-pod", "namespace": "default", "managedFields": [{"manager": "kubectl"}]},
+            "spec": {"containers": [{"name": "nginx"}]},
+            "status": {"phase": "Running"},
+        }
+        mock_api_client_instance = MagicMock()
+        mock_api_client_instance.sanitize_for_serialization.return_value = raw_dict
+        mock_api_client_class.return_value = mock_api_client_instance
+
+        full_yaml, spec_yaml = k8s.get_resource_yaml("pod", "test-pod", "default")
+
+        assert "status:" not in spec_yaml
+        assert "managedFields" not in spec_yaml
+        assert "apiVersion: v1" in spec_yaml
+        assert "kind: Pod" in spec_yaml
+        assert "name: test-pod" in spec_yaml
+
+    @patch("gantry.k8s.config.load_kube_config")
+    def test_get_resource_yaml_missing_kubeconfig_returns_none_tuple(self, mock_config):
+        from kubernetes.config.config_exception import ConfigException
+        mock_config.side_effect = ConfigException("No kubeconfig")
+        result = k8s.get_resource_yaml("pod", "test-pod", "default")
+        assert result == (None, None)
+
+    @patch("gantry.k8s.config.load_kube_config")
+    @patch("gantry.k8s.client.CoreV1Api")
+    def test_get_resource_yaml_not_found_returns_none_tuple(
+        self, mock_core_api_class, mock_config
+    ):
+        mock_core_api = MagicMock()
+        mock_core_api.read_namespaced_pod.side_effect = ApiException(status=404)
+        mock_core_api_class.return_value = mock_core_api
+        result = k8s.get_resource_yaml("pod", "nonexistent", "default")
+        assert result == (None, None)
+
+    @patch("gantry.k8s.config.load_kube_config")
+    @patch("gantry.k8s.client.ApiClient")
+    @patch("gantry.k8s.client.AppsV1Api")
+    def test_get_resource_yaml_deployment(
+        self, mock_apps_api_class, mock_api_client_class, mock_config
+    ):
+        deploy = MagicMock()
+        mock_apps_api = MagicMock()
+        mock_apps_api.read_namespaced_deployment.return_value = deploy
+        mock_apps_api_class.return_value = mock_apps_api
+        raw_dict = {
+            "apiVersion": "apps/v1", "kind": "Deployment",
+            "metadata": {"name": "nginx-deploy", "namespace": "default"},
+            "spec": {"replicas": 3}, "status": {"readyReplicas": 3},
+        }
+        mock_api_client_instance = MagicMock()
+        mock_api_client_instance.sanitize_for_serialization.return_value = raw_dict
+        mock_api_client_class.return_value = mock_api_client_instance
+
+        full_yaml, spec_yaml = k8s.get_resource_yaml("deployment", "nginx-deploy", "default")
+
+        assert full_yaml is not None
+        assert "Deployment" in full_yaml
+
+    @patch("gantry.k8s.config.load_kube_config")
+    def test_get_resource_yaml_unsupported_type_returns_none_tuple(self, mock_config):
+        result = k8s.get_resource_yaml("foobar", "test", "default")
+        assert result == (None, None)
