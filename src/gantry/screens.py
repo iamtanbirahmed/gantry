@@ -892,7 +892,6 @@ class ClusterScreen(Screen):
             detail_panel = self.query_one("#detail-panel", VerticalScroll)
             detail_panel.remove_class("show")
             self.detail_panel_open = False
-            self.yaml_view_open = False
 
             # Clear the content
             detail_content = self.query_one("#detail-panel-content", Static)

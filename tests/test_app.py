@@ -534,6 +534,9 @@ async def test_teardown_yaml_panel_removes_text_area():
         with pytest.raises(NoMatches):
             screen.query_one("#yaml-content", TextArea)
 
+        static = screen.query_one("#detail-panel-content", Static)
+        assert "hidden" not in static.classes
+
 
 @pytest.mark.asyncio
 async def test_yaml_panel_closed_when_describe_called():
