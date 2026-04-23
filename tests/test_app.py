@@ -6,7 +6,7 @@ from textual.widgets import ListView, TextArea, Static
 
 from gantry.app import GantryApp
 from gantry.screens import ClusterScreen, HelmScreen
-from gantry.widgets import KeybindingsBar
+from gantry.widgets import KeybindingsBar, ResourceTable
 
 
 def test_app_initializes():
@@ -555,3 +555,86 @@ async def test_yaml_panel_closed_when_describe_called():
         await pilot.pause()
 
         assert screen.yaml_view_open is False
+
+
+@pytest.mark.asyncio
+async def test_y_key_triggers_yaml_worker():
+    """Pressing 'y' with resource data should call _show_yaml_worker."""
+    from unittest.mock import patch
+
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+
+        screen._resource_data = [{"name": "test-pod", "namespace": "default"}]
+        screen.current_resource_type = "Pods"
+        screen.current_namespace = "default"
+
+        table = screen.query_one("#resource-table", ResourceTable)
+        table.focus()
+
+        with patch.object(screen, "_show_yaml_worker") as mock_worker:
+            await pilot.press("y")
+            await pilot.pause()
+            mock_worker.assert_called_once_with("pod", "test-pod", "default")
+
+
+@pytest.mark.asyncio
+async def test_full_yaml_lifecycle_open_toggle_close():
+    """Full lifecycle: open YAML panel, toggle mode, then close with escape."""
+    from textual.css.query import NoMatches
+
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+
+        full = "apiVersion: v1\nkind: Pod\nstatus:\n  phase: Running\n"
+        spec = "apiVersion: v1\nkind: Pod\nspec: {}\n"
+
+        screen._apply_yaml_result((full, spec))
+        await pilot.pause()
+
+        assert screen.yaml_view_open is True
+        assert screen.yaml_mode == "full"
+        text_area = screen.query_one("#yaml-content", TextArea)
+        assert "status:" in text_area.text
+
+        await pilot.press("m")
+        await pilot.pause()
+
+        assert screen.yaml_mode == "spec"
+        text_area = screen.query_one("#yaml-content", TextArea)
+        assert "status:" not in text_area.text
+
+        await pilot.press("escape")
+        await pilot.pause()
+
+        assert screen.yaml_view_open is False
+        assert screen.detail_panel_open is False
+        with pytest.raises(NoMatches):
+            screen.query_one("#yaml-content", TextArea)
+
+
+@pytest.mark.asyncio
+async def test_yaml_then_describe_tears_down_yaml():
+    """Pressing 'd' while YAML is open should tear down YAML, then run describe."""
+    from textual.css.query import NoMatches
+
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+
+        screen._apply_yaml_result(("apiVersion: v1\n", "apiVersion: v1\n"))
+        await pilot.pause()
+        assert screen.yaml_view_open is True
+
+        # No resource data means describe returns early after teardown
+        screen.action_describe_resource()
+        await pilot.pause()
+
+        assert screen.yaml_view_open is False
+        with pytest.raises(NoMatches):
+            screen.query_one("#yaml-content", TextArea)
