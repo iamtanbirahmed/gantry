@@ -111,7 +111,7 @@ class ResourceTable(DataTable):
             row_data = {"key": row_key}
             self.post_message(self.RowSelected(row_key, row_data))
 
-    def _on_key(self, event: Key) -> None:
+    async def _on_key(self, event: Key) -> None:
         """Handle key events and allow right/left arrows to bubble up for panel navigation."""
         if event.key == "right":
             event.stop()
@@ -120,7 +120,7 @@ class ResourceTable(DataTable):
             event.stop()
             self.screen.action_focus_previous_panel()
         else:
-            super()._on_key(event)
+            await super()._on_key(event)
 
 
 class SearchInput(Input):

@@ -2,7 +2,9 @@
 
 import pytest
 from textual.containers import VerticalScroll
+from textual.css.query import NoMatches
 from textual.widgets import ListView, TextArea, Static
+from unittest.mock import patch
 
 from gantry.app import GantryApp
 from gantry.screens import ClusterScreen, HelmScreen
@@ -343,7 +345,6 @@ def test_keybindings_bar_helm_normal():
 
 def test_cluster_screen_has_yaml_bindings():
     """ClusterScreen should have 'y' and 'm' in BINDINGS."""
-    from gantry.screens import ClusterScreen
     binding_keys = [
         b[0] if isinstance(b, tuple) else b.key
         for b in ClusterScreen.BINDINGS
@@ -354,7 +355,6 @@ def test_cluster_screen_has_yaml_bindings():
 
 def test_cluster_screen_has_yaml_reactives():
     """ClusterScreen should have yaml_view_open and yaml_mode reactives."""
-    from gantry.screens import ClusterScreen
     screen = ClusterScreen()
     assert hasattr(screen, "yaml_view_open")
     assert hasattr(screen, "yaml_mode")
@@ -489,8 +489,6 @@ async def test_status_bar_shows_yaml_mode_hint():
 @pytest.mark.asyncio
 async def test_escape_closes_yaml_panel_and_removes_text_area():
     """Escape should clear YAML state and remove TextArea."""
-    from textual.css.query import NoMatches
-
     app = GantryApp()
     async with app.run_test() as pilot:
         screen = app.screen
@@ -516,8 +514,6 @@ async def test_escape_closes_yaml_panel_and_removes_text_area():
 @pytest.mark.asyncio
 async def test_teardown_yaml_panel_removes_text_area():
     """_teardown_yaml_panel should remove TextArea and show Static."""
-    from textual.css.query import NoMatches
-
     app = GantryApp()
     async with app.run_test() as pilot:
         screen = app.screen
@@ -560,8 +556,6 @@ async def test_yaml_panel_closed_when_describe_called():
 @pytest.mark.asyncio
 async def test_y_key_triggers_yaml_worker():
     """Pressing 'y' with resource data should call _show_yaml_worker."""
-    from unittest.mock import patch
-
     app = GantryApp()
     async with app.run_test() as pilot:
         screen = app.screen
@@ -583,8 +577,6 @@ async def test_y_key_triggers_yaml_worker():
 @pytest.mark.asyncio
 async def test_full_yaml_lifecycle_open_toggle_close():
     """Full lifecycle: open YAML panel, toggle mode, then close with escape."""
-    from textual.css.query import NoMatches
-
     app = GantryApp()
     async with app.run_test() as pilot:
         screen = app.screen
@@ -619,9 +611,7 @@ async def test_full_yaml_lifecycle_open_toggle_close():
 
 @pytest.mark.asyncio
 async def test_yaml_then_describe_tears_down_yaml():
-    """Pressing 'd' while YAML is open should tear down YAML, then run describe."""
-    from textual.css.query import NoMatches
-
+    """Pressing 'd' while YAML is open should tear down YAML."""
     app = GantryApp()
     async with app.run_test() as pilot:
         screen = app.screen
@@ -631,8 +621,8 @@ async def test_yaml_then_describe_tears_down_yaml():
         await pilot.pause()
         assert screen.yaml_view_open is True
 
-        # No resource data means describe returns early after teardown
-        screen.action_describe_resource()
+        # Press 'd' — no resource data so describe exits early, but teardown runs first
+        await pilot.press("d")
         await pilot.pause()
 
         assert screen.yaml_view_open is False
