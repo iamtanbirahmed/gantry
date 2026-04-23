@@ -912,6 +912,7 @@ class ClusterScreen(Screen):
 
     def action_show_logs(self) -> None:
         """Show logs for the selected pod."""
+        self._teardown_yaml_panel()
         if self.current_resource_type != "Pods":
             self.connection_status = "Logs available for Pods only"
             self._update_status_bar()

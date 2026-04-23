@@ -628,3 +628,22 @@ async def test_yaml_then_describe_tears_down_yaml():
         assert screen.yaml_view_open is False
         with pytest.raises(NoMatches):
             screen.query_one("#yaml-content", TextArea)
+
+
+@pytest.mark.asyncio
+async def test_yaml_panel_closed_when_logs_called():
+    """yaml_view_open should be False after 'l' is pressed while YAML was open."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+
+        screen._apply_yaml_result(("apiVersion: v1\n", "apiVersion: v1\n"))
+        await pilot.pause()
+        assert screen.yaml_view_open is True
+
+        # Press 'l' — not in Pods view, so logs exits early, but teardown runs first
+        await pilot.press("l")
+        await pilot.pause()
+
+        assert screen.yaml_view_open is False
