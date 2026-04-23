@@ -701,7 +701,7 @@ class ClusterScreen(Screen):
         result = k8s.get_resource_yaml(resource_type, resource_name, namespace)
         self.app.call_from_thread(self._apply_yaml_result, result)
 
-    def _apply_yaml_result(self, result: tuple) -> None:
+    def _apply_yaml_result(self, result: tuple[Optional[str], Optional[str]]) -> None:
         """Apply YAML fetch result on main thread."""
         full_yaml, spec_yaml = result
         if full_yaml is None:
@@ -722,10 +722,8 @@ class ClusterScreen(Screen):
 
         # Remove existing TextArea if present
         if self._yaml_text_area is not None:
-            try:
+            if self._yaml_text_area.is_attached:
                 self._yaml_text_area.remove()
-            except Exception:
-                pass
             self._yaml_text_area = None
 
         # Hide the Static description widget
@@ -753,6 +751,10 @@ class ClusterScreen(Screen):
         )
         self._update_status_bar()
         logger.debug(f"_show_yaml_panel: mode={self.yaml_mode}")
+
+    def action_toggle_yaml_mode(self) -> None:
+        """Toggle YAML view mode (full ↔ spec). Implemented in Task 3."""
+        pass
 
     def _show_describe_dialog(self, resource_type: str, resource_name: str, namespace: str) -> None:
         """Show a dialog with resource details."""
