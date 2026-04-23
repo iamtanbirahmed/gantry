@@ -664,6 +664,7 @@ class ClusterScreen(Screen):
 
     def action_describe_resource(self) -> None:
         """Describe the selected resource."""
+        self._teardown_yaml_panel()
         table: ResourceTable = self.query_one("#resource-table", ResourceTable)
         if not self._resource_data:
             return
@@ -772,6 +773,22 @@ class ClusterScreen(Screen):
         )
         self._update_status_bar()
         logger.debug(f"action_toggle_yaml_mode: mode={self.yaml_mode}")
+
+    def _teardown_yaml_panel(self) -> None:
+        """Remove YAML TextArea and restore the Static widget."""
+        if self._yaml_text_area is not None:
+            if self._yaml_text_area.is_attached:
+                self._yaml_text_area.remove()
+            self._yaml_text_area = None
+
+        try:
+            detail_content = self.query_one("#detail-panel-content", Static)
+            detail_content.remove_class("hidden")
+        except Exception:
+            pass
+
+        self.yaml_view_open = False
+        logger.debug("_teardown_yaml_panel: done")
 
     def _show_describe_dialog(self, resource_type: str, resource_name: str, namespace: str) -> None:
         """Show a dialog with resource details."""
@@ -1005,6 +1022,7 @@ class ClusterScreen(Screen):
     def action_close_detail_panel(self) -> None:
         """Close the detail panel (Escape key handler)."""
         if self.detail_panel_open:
+            self._teardown_yaml_panel()
             self._close_detail_panel()
 
     @work(thread=True)

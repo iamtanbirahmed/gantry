@@ -484,3 +484,71 @@ async def test_status_bar_shows_yaml_mode_hint():
         # Toggle is also synchronous
         screen.action_toggle_yaml_mode()
         assert "spec" in screen.connection_status
+
+
+@pytest.mark.asyncio
+async def test_escape_closes_yaml_panel_and_removes_text_area():
+    """Escape should clear YAML state and remove TextArea."""
+    from textual.css.query import NoMatches
+
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+
+        screen._apply_yaml_result(("apiVersion: v1\n", "apiVersion: v1\n"))
+        await pilot.pause()
+        assert screen.yaml_view_open is True
+
+        screen.action_close_detail_panel()
+        await pilot.pause()
+
+        assert screen.yaml_view_open is False
+        assert screen.detail_panel_open is False
+
+        with pytest.raises(NoMatches):
+            screen.query_one("#yaml-content", TextArea)
+
+        static = screen.query_one("#detail-panel-content", Static)
+        assert "hidden" not in static.classes
+
+
+@pytest.mark.asyncio
+async def test_teardown_yaml_panel_removes_text_area():
+    """_teardown_yaml_panel should remove TextArea and show Static."""
+    from textual.css.query import NoMatches
+
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+
+        screen._apply_yaml_result(("apiVersion: v1\n", "apiVersion: v1\n"))
+        await pilot.pause()
+        assert screen.yaml_view_open is True
+
+        screen._teardown_yaml_panel()
+        await pilot.pause()
+
+        assert screen.yaml_view_open is False
+        with pytest.raises(NoMatches):
+            screen.query_one("#yaml-content", TextArea)
+
+
+@pytest.mark.asyncio
+async def test_yaml_panel_closed_when_describe_called():
+    """yaml_view_open should be False after describe is invoked while YAML was open."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+
+        screen._apply_yaml_result(("apiVersion: v1\n", "apiVersion: v1\n"))
+        await pilot.pause()
+        assert screen.yaml_view_open is True
+
+        # No resource data → describe returns early after teardown
+        screen.action_describe_resource()
+        await pilot.pause()
+
+        assert screen.yaml_view_open is False
