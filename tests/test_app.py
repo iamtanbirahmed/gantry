@@ -2,7 +2,7 @@
 
 import pytest
 from textual.containers import VerticalScroll
-from textual.widgets import ListView
+from textual.widgets import ListView, TextArea, Static
 
 from gantry.app import GantryApp
 from gantry.screens import ClusterScreen, HelmScreen
@@ -337,3 +337,81 @@ def test_keybindings_bar_helm_normal():
     # Should NOT show cluster-specific bindings
     assert "Describe" not in output
     assert "Logs" not in output
+
+
+# --- YAML Viewer Tests ---
+
+def test_cluster_screen_has_yaml_bindings():
+    """ClusterScreen should have 'y' and 'm' in BINDINGS."""
+    from gantry.screens import ClusterScreen
+    binding_keys = [
+        b[0] if isinstance(b, tuple) else b.key
+        for b in ClusterScreen.BINDINGS
+    ]
+    assert "y" in binding_keys
+    assert "m" in binding_keys
+
+
+def test_cluster_screen_has_yaml_reactives():
+    """ClusterScreen should have yaml_view_open and yaml_mode reactives."""
+    from gantry.screens import ClusterScreen
+    screen = ClusterScreen()
+    assert hasattr(screen, "yaml_view_open")
+    assert hasattr(screen, "yaml_mode")
+    assert screen.yaml_view_open is False
+    assert screen.yaml_mode == "full"
+
+
+@pytest.mark.asyncio
+async def test_yaml_panel_hidden_on_mount():
+    """yaml_view_open should be False on mount."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+        assert screen.yaml_view_open is False
+
+
+@pytest.mark.asyncio
+async def test_apply_yaml_result_mounts_text_area():
+    """_apply_yaml_result should mount TextArea and set yaml_view_open=True."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+
+        screen._apply_yaml_result(("apiVersion: v1\nkind: Pod\n", "apiVersion: v1\n"))
+        await pilot.pause()
+
+        assert screen.yaml_view_open is True
+        text_area = screen.query_one("#yaml-content", TextArea)
+        assert "apiVersion: v1" in text_area.text
+
+
+@pytest.mark.asyncio
+async def test_apply_yaml_result_hides_static():
+    """_apply_yaml_result should hide the #detail-panel-content Static."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+
+        screen._apply_yaml_result(("apiVersion: v1\n", "apiVersion: v1\n"))
+        await pilot.pause()
+
+        static = screen.query_one("#detail-panel-content", Static)
+        assert "hidden" in static.classes
+
+
+@pytest.mark.asyncio
+async def test_apply_yaml_result_none_does_not_open_panel():
+    """_apply_yaml_result with (None, None) should not open the YAML panel."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+
+        screen._apply_yaml_result((None, None))
+        await pilot.pause()
+
+        assert screen.yaml_view_open is False

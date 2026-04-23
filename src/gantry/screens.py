@@ -197,6 +197,8 @@ class ClusterScreen(Screen):
         Binding("slash", "focus_search", "Search", priority=True),
         ("c", "show_context_picker", "Pick Context"),
         ("d", "describe_resource", "Describe"),
+        ("y", "show_yaml", "YAML"),
+        ("m", "toggle_yaml_mode", "Toggle"),
         ("l", "show_logs", "Logs"),
         ("r", "refresh_resources", "Refresh"),
         ("q", "quit", "Quit Gantry"),
@@ -259,6 +261,10 @@ class ClusterScreen(Screen):
         display: block;
     }
 
+    #detail-panel-content.hidden {
+        display: none;
+    }
+
     #detail-panel > Static {
         width: 100%;
         height: 100%;
@@ -319,6 +325,8 @@ class ClusterScreen(Screen):
     current_panel = reactive("sidebar")  # "sidebar", "table", or "search"
     detail_panel_open = reactive(False)  # Tracks if detail panel is visible
     search_active: reactive[bool] = reactive(False)  # Tracks if search input is active
+    yaml_view_open: reactive[bool] = reactive(False)
+    yaml_mode: reactive[str] = reactive("full")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -328,6 +336,9 @@ class ClusterScreen(Screen):
             t: [] for t in self._RESOURCE_TYPES
         }
         self._fetch_id: int = 0
+        self._yaml_full: str = ""
+        self._yaml_spec: str = ""
+        self._yaml_text_area: Optional[TextArea] = None
 
     def compose(self):
         """Compose the cluster screen."""
@@ -663,6 +674,85 @@ class ClusterScreen(Screen):
             namespace = resource.get("namespace", self.current_namespace) if self.current_namespace == "all" else self.current_namespace
 
             self._show_describe_dialog(resource_type, resource_name, namespace)
+
+    def action_show_yaml(self) -> None:
+        """Show YAML manifest for the selected resource (y key)."""
+        table: ResourceTable = self.query_one("#resource-table", ResourceTable)
+        if not self._resource_data:
+            return
+        row_index = table.cursor_row
+        if 0 <= row_index < len(self._resource_data):
+            resource = self._resource_data[row_index]
+            resource_name = resource.get("name", "Unknown")
+            resource_type = self._TYPE_SINGULAR.get(
+                self.current_resource_type, self.current_resource_type.lower()
+            )
+            namespace = (
+                resource.get("namespace", self.current_namespace)
+                if self.current_namespace == "all"
+                else self.current_namespace
+            )
+            self._show_yaml_worker(resource_type, resource_name, namespace)
+
+    @work(thread=True)
+    def _show_yaml_worker(self, resource_type: str, resource_name: str, namespace: str) -> None:
+        """Worker to fetch YAML in background."""
+        logger.debug(f"_show_yaml_worker: {resource_type}/{resource_name} in {namespace}")
+        result = k8s.get_resource_yaml(resource_type, resource_name, namespace)
+        self.app.call_from_thread(self._apply_yaml_result, result)
+
+    def _apply_yaml_result(self, result: tuple) -> None:
+        """Apply YAML fetch result on main thread."""
+        full_yaml, spec_yaml = result
+        if full_yaml is None:
+            self.connection_status = "Failed to load YAML"
+            self._update_status_bar()
+            return
+        self._yaml_full = full_yaml
+        self._yaml_spec = spec_yaml or ""
+        self.yaml_mode = "full"
+        self._show_yaml_panel()
+
+    def _show_yaml_panel(self) -> None:
+        """Mount (or refresh) the YAML TextArea inside the detail panel."""
+        yaml_content = self._yaml_full if self.yaml_mode == "full" else self._yaml_spec
+
+        detail_panel = self.query_one("#detail-panel", VerticalScroll)
+        detail_content = self.query_one("#detail-panel-content", Static)
+
+        # Remove existing TextArea if present
+        if self._yaml_text_area is not None:
+            try:
+                self._yaml_text_area.remove()
+            except Exception:
+                pass
+            self._yaml_text_area = None
+
+        # Hide the Static description widget
+        detail_content.add_class("hidden")
+
+        # Mount read-only TextArea with YAML syntax highlighting
+        text_area = TextArea(
+            yaml_content,
+            language="yaml",
+            read_only=True,
+            id="yaml-content",
+        )
+        detail_panel.mount(text_area)
+        self._yaml_text_area = text_area
+
+        detail_panel.add_class("show")
+        self.detail_panel_open = True
+        self.yaml_view_open = True
+        self.current_panel = "detail"
+        detail_panel.focus()
+
+        mode_label = "full" if self.yaml_mode == "full" else "spec"
+        self.connection_status = (
+            f"YAML ({mode_label}) | m: toggle · d: describe · ↑↓ scroll"
+        )
+        self._update_status_bar()
+        logger.debug(f"_show_yaml_panel: mode={self.yaml_mode}")
 
     def _show_describe_dialog(self, resource_type: str, resource_name: str, namespace: str) -> None:
         """Show a dialog with resource details."""
