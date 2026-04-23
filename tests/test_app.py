@@ -473,10 +473,14 @@ async def test_status_bar_shows_yaml_mode_hint():
         screen = app.screen
         assert isinstance(screen, ClusterScreen)
 
-        screen._apply_yaml_result(("apiVersion: v1\n", "apiVersion: v1\n"))
-        await pilot.pause()
+        # Set up state directly without spawning background workers
+        screen._yaml_full = "apiVersion: v1\n"
+        screen._yaml_spec = "apiVersion: v1\n"
+        screen._show_yaml_panel()  # synchronous: directly updates connection_status
+
+        # Assert immediately — no background workers involved
         assert "full" in screen.connection_status
 
+        # Toggle is also synchronous
         screen.action_toggle_yaml_mode()
-        await pilot.pause()
         assert "spec" in screen.connection_status
