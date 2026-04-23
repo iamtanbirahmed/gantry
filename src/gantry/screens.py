@@ -520,6 +520,9 @@ class ClusterScreen(Screen):
         """Apply fetch status on main thread."""
         if fetch_id != self._fetch_id:
             return
+        # Don't overwrite the YAML panel status hint while the panel is open
+        if self.yaml_view_open:
+            return
         self.connection_status = status
         self._update_status_bar()
 
@@ -753,8 +756,22 @@ class ClusterScreen(Screen):
         logger.debug(f"_show_yaml_panel: mode={self.yaml_mode}")
 
     def action_toggle_yaml_mode(self) -> None:
-        """Toggle YAML view mode (full ↔ spec). Implemented in Task 3."""
-        pass
+        """Toggle between full manifest and spec-only YAML (m key)."""
+        if not self.yaml_view_open:
+            return
+
+        self.yaml_mode = "spec" if self.yaml_mode == "full" else "full"
+
+        yaml_content = self._yaml_full if self.yaml_mode == "full" else self._yaml_spec
+        if self._yaml_text_area is not None:
+            self._yaml_text_area.load_text(yaml_content)
+
+        mode_label = self.yaml_mode
+        self.connection_status = (
+            f"YAML ({mode_label}) | m: toggle · d: describe · ↑↓ scroll"
+        )
+        self._update_status_bar()
+        logger.debug(f"action_toggle_yaml_mode: mode={self.yaml_mode}")
 
     def _show_describe_dialog(self, resource_type: str, resource_name: str, namespace: str) -> None:
         """Show a dialog with resource details."""

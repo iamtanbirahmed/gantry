@@ -415,3 +415,68 @@ async def test_apply_yaml_result_none_does_not_open_panel():
         await pilot.pause()
 
         assert screen.yaml_view_open is False
+
+
+@pytest.mark.asyncio
+async def test_toggle_yaml_mode_switches_content():
+    """'m' key should toggle between full and spec YAML content."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+
+        full = "apiVersion: v1\nkind: Pod\nstatus:\n  phase: Running\n"
+        spec = "apiVersion: v1\nkind: Pod\nspec: {}\n"
+        screen._apply_yaml_result((full, spec))
+        await pilot.pause()
+
+        assert screen.yaml_mode == "full"
+        text_area = screen.query_one("#yaml-content", TextArea)
+        assert "status:" in text_area.text
+
+        screen.action_toggle_yaml_mode()
+        await pilot.pause()
+
+        assert screen.yaml_mode == "spec"
+        text_area = screen.query_one("#yaml-content", TextArea)
+        assert "status:" not in text_area.text
+        assert "spec:" in text_area.text
+
+        screen.action_toggle_yaml_mode()
+        await pilot.pause()
+
+        assert screen.yaml_mode == "full"
+        text_area = screen.query_one("#yaml-content", TextArea)
+        assert "status:" in text_area.text
+
+
+@pytest.mark.asyncio
+async def test_toggle_yaml_mode_no_op_when_panel_closed():
+    """action_toggle_yaml_mode should be a no-op when yaml_view_open is False."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+
+        assert screen.yaml_view_open is False
+        screen.action_toggle_yaml_mode()
+        await pilot.pause()
+
+        assert screen.yaml_mode == "full"
+
+
+@pytest.mark.asyncio
+async def test_status_bar_shows_yaml_mode_hint():
+    """Status bar should show '(full)' or '(spec)' based on current mode."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+
+        screen._apply_yaml_result(("apiVersion: v1\n", "apiVersion: v1\n"))
+        await pilot.pause()
+        assert "full" in screen.connection_status
+
+        screen.action_toggle_yaml_mode()
+        await pilot.pause()
+        assert "spec" in screen.connection_status
