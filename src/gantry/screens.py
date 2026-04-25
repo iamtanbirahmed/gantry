@@ -326,7 +326,7 @@ class ClusterScreen(Screen):
     detail_panel_open = reactive(False)  # Tracks if detail panel is visible
     search_active: reactive[bool] = reactive(False)  # Tracks if search input is active
     yaml_view_open: reactive[bool] = reactive(False)
-    yaml_mode: reactive[str] = reactive("full")
+    yaml_mode: reactive[str] = reactive("spec")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -714,7 +714,7 @@ class ClusterScreen(Screen):
             return
         self._yaml_full = full_yaml
         self._yaml_spec = spec_yaml or ""
-        self.yaml_mode = "full"
+        self.yaml_mode = "spec"
         self._show_yaml_panel()
 
     def _show_yaml_panel(self) -> None:

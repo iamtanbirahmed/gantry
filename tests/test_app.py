@@ -359,7 +359,7 @@ def test_cluster_screen_has_yaml_reactives():
     assert hasattr(screen, "yaml_view_open")
     assert hasattr(screen, "yaml_mode")
     assert screen.yaml_view_open is False
-    assert screen.yaml_mode == "full"
+    assert screen.yaml_mode == "spec"
 
 
 @pytest.mark.asyncio
@@ -430,13 +430,6 @@ async def test_toggle_yaml_mode_switches_content():
         screen._apply_yaml_result((full, spec))
         await pilot.pause()
 
-        assert screen.yaml_mode == "full"
-        text_area = screen.query_one("#yaml-content", TextArea)
-        assert "status:" in text_area.text
-
-        screen.action_toggle_yaml_mode()
-        await pilot.pause()
-
         assert screen.yaml_mode == "spec"
         text_area = screen.query_one("#yaml-content", TextArea)
         assert "status:" not in text_area.text
@@ -448,6 +441,14 @@ async def test_toggle_yaml_mode_switches_content():
         assert screen.yaml_mode == "full"
         text_area = screen.query_one("#yaml-content", TextArea)
         assert "status:" in text_area.text
+
+        screen.action_toggle_yaml_mode()
+        await pilot.pause()
+
+        assert screen.yaml_mode == "spec"
+        text_area = screen.query_one("#yaml-content", TextArea)
+        assert "status:" not in text_area.text
+        assert "spec:" in text_area.text
 
 
 @pytest.mark.asyncio
@@ -462,7 +463,7 @@ async def test_toggle_yaml_mode_no_op_when_panel_closed():
         screen.action_toggle_yaml_mode()
         await pilot.pause()
 
-        assert screen.yaml_mode == "full"
+        assert screen.yaml_mode == "spec"
 
 
 @pytest.mark.asyncio
@@ -479,11 +480,11 @@ async def test_status_bar_shows_yaml_mode_hint():
         screen._show_yaml_panel()  # synchronous: directly updates connection_status
 
         # Assert immediately — no background workers involved
-        assert "full" in screen.connection_status
+        assert "spec" in screen.connection_status
 
         # Toggle is also synchronous
         screen.action_toggle_yaml_mode()
-        assert "spec" in screen.connection_status
+        assert "full" in screen.connection_status
 
 
 @pytest.mark.asyncio
@@ -589,16 +590,16 @@ async def test_full_yaml_lifecycle_open_toggle_close():
         await pilot.pause()
 
         assert screen.yaml_view_open is True
-        assert screen.yaml_mode == "full"
+        assert screen.yaml_mode == "spec"
         text_area = screen.query_one("#yaml-content", TextArea)
-        assert "status:" in text_area.text
+        assert "status:" not in text_area.text
 
         await pilot.press("m")
         await pilot.pause()
 
-        assert screen.yaml_mode == "spec"
+        assert screen.yaml_mode == "full"
         text_area = screen.query_one("#yaml-content", TextArea)
-        assert "status:" not in text_area.text
+        assert "status:" in text_area.text
 
         await pilot.press("escape")
         await pilot.pause()
