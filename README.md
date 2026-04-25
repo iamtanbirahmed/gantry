@@ -44,6 +44,8 @@ uv run python -m gantry --debug
 | `c` | Context + namespace picker |
 | `/` | Search / filter |
 | `d` | Describe selected resource |
+| `y` | View YAML manifest |
+| `m` | Toggle YAML mode (full / spec-only) |
 | `l` | View pod logs |
 | `r` | Refresh |
 | `Enter` | Deploy Helm chart |
