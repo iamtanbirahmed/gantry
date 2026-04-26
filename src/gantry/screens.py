@@ -725,28 +725,25 @@ class ClusterScreen(Screen):
         detail_panel = self.query_one("#detail-panel", VerticalScroll)
         detail_content = self.query_one("#detail-panel-content", Static)
 
-        # Remove existing TextArea if present — query DOM directly so concurrent
-        # background workers don't race on the stale is_attached check.
-        try:
-            old_textarea = detail_panel.query_one("#yaml-content", TextArea)
-            old_textarea.remove()
-        except NoMatches:
-            pass
-        self._yaml_text_area = None
+        # Reuse the existing TextArea if it is still in the DOM to avoid the
+        # async remove-then-mount race that causes DuplicateIds when `y` is
+        # pressed while the panel is already open.
+        if self._yaml_text_area is not None and self._yaml_text_area.is_attached:
+            self._yaml_text_area.load_text(yaml_content)
+            self._yaml_text_area.language = "yaml"
+        else:
+            text_area = TextArea(
+                yaml_content,
+                language="yaml",
+                theme="monokai",
+                read_only=True,
+                id="yaml-content",
+            )
+            detail_panel.mount(text_area)
+            self._yaml_text_area = text_area
 
         # Hide the Static description widget
         detail_content.add_class("hidden")
-
-        # Mount read-only TextArea with YAML syntax highlighting
-        text_area = TextArea(
-            yaml_content,
-            language="yaml",
-            theme="monokai",
-            read_only=True,
-            id="yaml-content",
-        )
-        detail_panel.mount(text_area)
-        self._yaml_text_area = text_area
 
         detail_panel.add_class("show")
         self.detail_panel_open = True
