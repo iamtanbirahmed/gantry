@@ -737,6 +737,7 @@ class ClusterScreen(Screen):
         text_area = TextArea(
             yaml_content,
             language="yaml",
+            theme="monokai",
             read_only=True,
             id="yaml-content",
         )

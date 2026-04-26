@@ -648,3 +648,18 @@ async def test_yaml_panel_closed_when_logs_called():
         await pilot.pause()
 
         assert screen.yaml_view_open is False
+
+
+@pytest.mark.asyncio
+async def test_yaml_text_area_uses_monokai_theme():
+    """TextArea for YAML should be created with the monokai theme."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+
+        screen._apply_yaml_result(("apiVersion: v1\nkind: Pod\n", "apiVersion: v1\n"))
+        await pilot.pause()
+
+        text_area = screen.query_one("#yaml-content", TextArea)
+        assert text_area.theme == "monokai"
