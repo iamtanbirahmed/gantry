@@ -93,7 +93,7 @@ uv run ruff format src/
 
 ## Project Structure
 
-```
+```text
 src/gantry/
 ├── __main__.py    # Entry point, CLI args, logging setup
 ├── app.py         # GantryApp — main Textual app, screen switching
