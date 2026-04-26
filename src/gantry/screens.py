@@ -11,6 +11,7 @@ from textual.binding import Binding
 from textual.message import Message
 from textual import work
 from textual.reactive import reactive
+from textual.css.query import NoMatches
 import json
 
 from gantry import k8s, state
@@ -724,11 +725,14 @@ class ClusterScreen(Screen):
         detail_panel = self.query_one("#detail-panel", VerticalScroll)
         detail_content = self.query_one("#detail-panel-content", Static)
 
-        # Remove existing TextArea if present
-        if self._yaml_text_area is not None:
-            if self._yaml_text_area.is_attached:
-                self._yaml_text_area.remove()
-            self._yaml_text_area = None
+        # Remove existing TextArea if present — query DOM directly so concurrent
+        # background workers don't race on the stale is_attached check.
+        try:
+            old_textarea = detail_panel.query_one("#yaml-content", TextArea)
+            old_textarea.remove()
+        except NoMatches:
+            pass
+        self._yaml_text_area = None
 
         # Hide the Static description widget
         detail_content.add_class("hidden")
