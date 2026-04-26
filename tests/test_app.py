@@ -663,3 +663,48 @@ async def test_yaml_text_area_uses_monokai_theme():
 
         text_area = screen.query_one("#yaml-content", TextArea)
         assert text_area.theme == "monokai"
+
+
+@pytest.mark.asyncio
+async def test_yaml_text_area_uses_yaml_language():
+    """TextArea for YAML should be created with language='yaml'."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+
+        screen._apply_yaml_result(("apiVersion: v1\nkind: Pod\n", "apiVersion: v1\n"))
+        await pilot.pause()
+
+        text_area = screen.query_one("#yaml-content", TextArea)
+        assert text_area.language == "yaml"
+
+
+@pytest.mark.asyncio
+async def test_yaml_language_preserved_after_toggle():
+    """TextArea language must remain 'yaml' after toggling between full and spec mode."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+
+        full = "apiVersion: v1\nkind: Pod\nstatus:\n  phase: Running\n"
+        spec = "apiVersion: v1\nkind: Pod\nspec: {}\n"
+        screen._apply_yaml_result((full, spec))
+        await pilot.pause()
+
+        # Initial state: spec mode
+        text_area = screen.query_one("#yaml-content", TextArea)
+        assert text_area.language == "yaml"
+
+        # Toggle to full
+        screen.action_toggle_yaml_mode()
+        await pilot.pause()
+        text_area = screen.query_one("#yaml-content", TextArea)
+        assert text_area.language == "yaml"
+
+        # Toggle back to spec
+        screen.action_toggle_yaml_mode()
+        await pilot.pause()
+        text_area = screen.query_one("#yaml-content", TextArea)
+        assert text_area.language == "yaml"
