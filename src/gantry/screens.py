@@ -79,6 +79,7 @@ class ContextPickerModal(ModalScreen):
     """
 
     def __init__(self, contexts: List[Dict[str, Any]], current_context: str, current_namespace: str):
+        """Initialize modal with available contexts and current selections."""
         super().__init__()
         self.contexts = contexts
         self.current_context = current_context
@@ -331,6 +332,7 @@ class ClusterScreen(Screen):
     yaml_mode: reactive[str] = reactive("spec")
 
     def __init__(self, *args, **kwargs):
+        """Initialize cluster screen with resource tracking."""
         super().__init__(*args, **kwargs)
         self._selected_row: Optional[str] = None
         self._resource_data: List[Dict[str, Any]] = []
