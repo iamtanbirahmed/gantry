@@ -363,17 +363,18 @@ async def test_helm_screen_yaml_file_detection():
         with tempfile.NamedTemporaryFile(suffix=".yaml", mode="w", delete=False) as f:
             f.write("apiVersion: v1\nkind: Pod\n")
             yaml_path = Path(f.name)
-
         try:
             # Create a mock DirectoryTree.FileSelected event
             from textual.widgets import DirectoryTree
-            event = DirectoryTree.FileSelected(yaml_path, yaml_path)
+            from unittest.mock import MagicMock
+            mock_node = MagicMock()
+            event = DirectoryTree.FileSelected(mock_node, yaml_path)
             screen.on_directory_tree_file_selected(event)
 
             # Check that language is set to yaml
             assert text_area.language == "yaml"
         finally:
-            yaml_path.unlink()
+            yaml_path.unlink(missing_ok=True)
 
 
 @pytest.mark.asyncio
@@ -398,17 +399,34 @@ async def test_helm_screen_non_yaml_file_detection():
         with tempfile.NamedTemporaryFile(suffix=".txt", mode="w", delete=False) as f:
             f.write("plain text content\n")
             txt_path = Path(f.name)
-
         try:
             # Create a mock DirectoryTree.FileSelected event
             from textual.widgets import DirectoryTree
-            event = DirectoryTree.FileSelected(txt_path, txt_path)
+            from unittest.mock import MagicMock
+            mock_node = MagicMock()
+            event = DirectoryTree.FileSelected(mock_node, txt_path)
             screen.on_directory_tree_file_selected(event)
 
             # Check that language is None
             assert text_area.language is None
         finally:
-            txt_path.unlink()
+            txt_path.unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
+async def test_helm_screen_renders_helm_keybindings():
+    """When HelmScreen is active, the KeybindingsBar must render helm hints, not cluster hints."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        await pilot.press("tab")
+        await pilot.pause()
+        assert isinstance(app.screen, HelmScreen)
+
+        bar = app.screen.query_one("#keybindings-bar", KeybindingsBar)
+        rendered = bar._build_text()
+        assert "↑↓ Navigate" in rendered
+        assert "Tab Cluster" in rendered
+        assert "d Describe" not in rendered  # cluster-only hint must not leak
 
 
 # --- YAML Viewer Tests ---
