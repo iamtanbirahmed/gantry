@@ -767,6 +767,7 @@ class ClusterScreen(Screen):
         yaml_content = self._yaml_full if self.yaml_mode == "full" else self._yaml_spec
         if self._yaml_text_area is not None:
             self._yaml_text_area.load_text(yaml_content)
+            self._yaml_text_area.language = "yaml"
 
         mode_label = self.yaml_mode
         self.connection_status = (
