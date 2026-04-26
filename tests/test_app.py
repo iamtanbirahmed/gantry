@@ -536,6 +536,27 @@ async def test_teardown_yaml_panel_removes_text_area():
 
 
 @pytest.mark.asyncio
+async def test_apply_yaml_result_twice_no_duplicate_ids():
+    """Calling _apply_yaml_result twice must not raise DuplicateIds."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+
+        screen._apply_yaml_result(("apiVersion: v1\nkind: Pod\n", "apiVersion: v1\n"))
+        await pilot.pause()
+        assert screen.yaml_view_open is True
+
+        # Second call simulates pressing 'y' while the panel is already open
+        screen._apply_yaml_result(("apiVersion: v1\nkind: Service\n", "apiVersion: v1\n"))
+        await pilot.pause()
+
+        assert screen.yaml_view_open is True
+        text_areas = screen.query("#yaml-content")
+        assert len(text_areas) == 1, "Expected exactly one #yaml-content widget"
+
+
+@pytest.mark.asyncio
 async def test_yaml_panel_closed_when_describe_called():
     """yaml_view_open should be False after describe is invoked while YAML was open."""
     app = GantryApp()
