@@ -329,16 +329,86 @@ def test_keybindings_bar_helm_normal():
     bar.update_context("helm", "table", detail_open=False, search_active=False)
 
     output = bar._build_text()
-    assert "←→ Navigate" in output
-    assert "↵ Deploy" in output
+    assert "↑↓ Navigate" in output
+    assert "↵ Expand" in output
     assert "r Refresh" in output
-    assert "c Context" in output
-    assert "/ Search" in output
     assert "Tab Cluster" in output
     assert "q Quit" in output
-    # Should NOT show cluster-specific bindings
+    # Should NOT show cluster-specific bindings or old helm bindings
     assert "Describe" not in output
     assert "Logs" not in output
+    assert "Deploy" not in output
+    assert "Context" not in output
+
+
+@pytest.mark.asyncio
+async def test_helm_screen_yaml_file_detection():
+    """HelmScreen should set language='yaml' for .yaml files."""
+    from pathlib import Path
+    import tempfile
+
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        # Switch to HelmScreen
+        await pilot.press("tab")
+        await pilot.pause()
+
+        screen = app.screen
+        assert isinstance(screen, HelmScreen)
+
+        # Get the TextArea widget
+        text_area = screen.query_one("#yaml-preview", TextArea)
+
+        # Simulate selecting a .yaml file by calling the event handler
+        with tempfile.NamedTemporaryFile(suffix=".yaml", mode="w", delete=False) as f:
+            f.write("apiVersion: v1\nkind: Pod\n")
+            yaml_path = Path(f.name)
+
+        try:
+            # Create a mock DirectoryTree.FileSelected event
+            from textual.widgets import DirectoryTree
+            event = DirectoryTree.FileSelected(yaml_path, yaml_path)
+            screen.on_directory_tree_file_selected(event)
+
+            # Check that language is set to yaml
+            assert text_area.language == "yaml"
+        finally:
+            yaml_path.unlink()
+
+
+@pytest.mark.asyncio
+async def test_helm_screen_non_yaml_file_detection():
+    """HelmScreen should set language=None for non-.yaml files."""
+    from pathlib import Path
+    import tempfile
+
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        # Switch to HelmScreen
+        await pilot.press("tab")
+        await pilot.pause()
+
+        screen = app.screen
+        assert isinstance(screen, HelmScreen)
+
+        # Get the TextArea widget
+        text_area = screen.query_one("#yaml-preview", TextArea)
+
+        # Simulate selecting a non-yaml file
+        with tempfile.NamedTemporaryFile(suffix=".txt", mode="w", delete=False) as f:
+            f.write("plain text content\n")
+            txt_path = Path(f.name)
+
+        try:
+            # Create a mock DirectoryTree.FileSelected event
+            from textual.widgets import DirectoryTree
+            event = DirectoryTree.FileSelected(txt_path, txt_path)
+            screen.on_directory_tree_file_selected(event)
+
+            # Check that language is None
+            assert text_area.language is None
+        finally:
+            txt_path.unlink()
 
 
 # --- YAML Viewer Tests ---
