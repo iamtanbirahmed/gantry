@@ -1159,6 +1159,8 @@ class HelmScreen(Screen):
             logger.error("Failed to read file %s: %s", path, e)
             self.query_one("#status-bar", StatusBar).update_status(f"Error reading file: {e}")
             content = ""
+        else:
+            self.query_one("#status-bar", StatusBar).update_status(f"Loaded {path.name}")
         text_area = self.query_one("#yaml-preview", TextArea)
         text_area.load_text(content)
         suffix = path.suffix.lower()
