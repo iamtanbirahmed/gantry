@@ -1119,6 +1119,8 @@ class HelmScreen(Screen):
         ("q", "quit", "Quit"),
     ]
 
+    _MAX_PREVIEW_BYTES = 1_000_000  # 1 MB
+
     CSS = """
     #helm-container {
         height: 1fr;
@@ -1153,15 +1155,26 @@ class HelmScreen(Screen):
     ) -> None:
         """Load selected file content into the preview pane with syntax highlighting."""
         path = event.path
+        status_bar = self.query_one("#status-bar", StatusBar)
+        text_area = self.query_one("#yaml-preview", TextArea)
+        try:
+            size = path.stat().st_size
+        except OSError as e:
+            logger.error("Failed to stat file %s: %s", path, e)
+            status_bar.update_status(f"Error reading file: {e}")
+            return
+        if size > self._MAX_PREVIEW_BYTES:
+            status_bar.update_status(f"Skipped large file {path.name} ({size:,} bytes)")
+            text_area.load_text(f"<file too large to preview: {size:,} bytes>")
+            text_area.language = None
+            return
         try:
             content = path.read_text(errors="replace")
         except OSError as e:
             logger.error("Failed to read file %s: %s", path, e)
-            self.query_one("#status-bar", StatusBar).update_status(f"Error reading file: {e}")
-            content = ""
-        else:
-            self.query_one("#status-bar", StatusBar).update_status(f"Loaded {path.name}")
-        text_area = self.query_one("#yaml-preview", TextArea)
+            status_bar.update_status(f"Error reading file: {e}")
+            return
+        status_bar.update_status(f"Loaded {path.name}")
         text_area.load_text(content)
         suffix = path.suffix.lower()
         if suffix in (".yaml", ".yml"):
