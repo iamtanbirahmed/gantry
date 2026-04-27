@@ -218,7 +218,7 @@ class ClusterScreen(Screen):
     }
 
     #resource-type-sidebar {
-        width: 24;
+        width: 20%;
         height: 100%;
         border-right: solid $accent;
         background: $panel;
