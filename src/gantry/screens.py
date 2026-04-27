@@ -1140,6 +1140,7 @@ class HelmScreen(Screen):
         bar.update_context("helm", "tree", detail_open=False, search_active=False)
 
     def compose(self):
+        """Compose the two-panel filesystem browser layout."""
         with Horizontal(id="helm-container"):
             yield DirectoryTree(Path.cwd(), id="file-tree")
             yield TextArea("", language="yaml", theme="monokai",
@@ -1150,10 +1151,11 @@ class HelmScreen(Screen):
     def on_directory_tree_file_selected(
         self, event: DirectoryTree.FileSelected
     ) -> None:
+        """Load selected file content into the preview pane with syntax highlighting."""
         path = event.path
         try:
             content = path.read_text(errors="replace")
-        except Exception as e:
+        except OSError as e:
             logger.error("Failed to read file %s: %s", path, e)
             self.query_one("#status-bar", StatusBar).update_status(f"Error reading file: {e}")
             content = ""
@@ -1168,4 +1170,5 @@ class HelmScreen(Screen):
             text_area.language = None
 
     def action_refresh(self) -> None:
+        """Reload the directory tree from disk."""
         self.query_one("#file-tree", DirectoryTree).reload()
