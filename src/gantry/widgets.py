@@ -343,7 +343,7 @@ class KeybindingsBar(Static):
         if self.screen_type == "cluster":
             return "←→ Navigate | d Describe | l Logs | r Refresh | c Context | / Search | Tab Helm | q Quit"
         elif self.screen_type == "helm":
-            return "←→ Navigate | ↵ Deploy | r Refresh | c Context | / Search | Tab Cluster | q Quit"
+            return "↑↓ Navigate | ↵ Expand | r Refresh | Tab Cluster | q Quit"
 
         # Fallback (should not reach here)
         return ""

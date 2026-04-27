@@ -1,10 +1,11 @@
 """Screen components for Gantry TUI."""
 
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from textual.screen import Screen, ModalScreen
 from textual.containers import Container, Vertical, Horizontal, ScrollableContainer, VerticalScroll
-from textual.widgets import Label, Static, Button, OptionList, Input, TextArea, ListView, ListItem
+from textual.widgets import Label, Static, Button, OptionList, Input, TextArea, ListView, ListItem, DirectoryTree
 from textual.widgets.option_list import Option
 from textual.widget import Widget
 from textual.binding import Binding
@@ -78,6 +79,7 @@ class ContextPickerModal(ModalScreen):
     """
 
     def __init__(self, contexts: List[Dict[str, Any]], current_context: str, current_namespace: str):
+        """Initialize modal with available contexts and current selections."""
         super().__init__()
         self.contexts = contexts
         self.current_context = current_context
@@ -330,6 +332,7 @@ class ClusterScreen(Screen):
     yaml_mode: reactive[str] = reactive("spec")
 
     def __init__(self, *args, **kwargs):
+        """Initialize cluster screen with resource tracking."""
         super().__init__(*args, **kwargs)
         self._selected_row: Optional[str] = None
         self._resource_data: List[Dict[str, Any]] = []
@@ -1110,469 +1113,77 @@ class ClusterScreen(Screen):
 
 
 class HelmScreen(Screen):
-    """Screen for Helm chart exploration and deployment."""
-
     BINDINGS = [
-        # Panel navigation (replaces manual Tab usage for panels)
-        ("left", "focus_previous_panel", "Previous Panel"),
-        ("right", "focus_next_panel", "Next Panel"),
-
-        # Existing keybindings
-        ("tab", "app.action_switch_screen", "Switch to Cluster View"),
-        Binding("slash", "focus_search", "Search", priority=True),
-        ("c", "show_context_picker", "Pick Context"),
-        ("enter", "execute_action('deploy')", "Deploy Chart"),
-        ("r", "refresh_charts", "Refresh"),
-        ("q", "quit", "Quit Gantry"),
+        ("tab", "app.action_switch_screen", "Cluster View"),
+        ("r", "refresh", "Refresh"),
+        ("q", "quit", "Quit"),
     ]
 
+    _MAX_PREVIEW_BYTES = 1_000_000  # 1 MB
+
     CSS = """
-    Screen {
-        layout: vertical;
-        background: $surface;
-        color: $text;
-    }
-
-    #header-container {
-        height: 3;
-        border: solid $accent;
-        padding: 0 1;
-    }
-
-    #repo-label {
-        height: 1;
-        width: 100%;
-        content-align: left middle;
-        text-style: bold;
-    }
-
-    #repo-selector {
-        height: 1;
-        width: 100%;
-    }
-
-    #repo-selector Button {
-        margin-right: 1;
-    }
-
-    #repo-selector Button:focus {
-        background: $accent;
-    }
-
-    #body-container {
+    #helm-container {
         height: 1fr;
     }
-
-    ResourceTable {
-        height: 1fr;
-        width: 100%;
-    }
-
-    ResourceTable > DataTable {
-        background: $surface;
-    }
-
-    #detail-panel {
-        height: auto;
-        border: solid $accent;
-        display: none;
-        background: $boost;
-        color: $text;
-        padding: 1;
-        margin: 1 0;
-    }
-
-    #detail-panel.show {
-        display: block;
-        height: auto;
-    }
-
-    StatusBar {
-        height: auto;
-        border: solid $accent;
-        border-bottom: solid $accent-darken-2;
-        padding: 0 2;
+    #file-tree {
+        width: 30%;
+        border-right: solid $accent;
         background: $panel;
-        color: $text;
     }
-
-    #keybindings-bar {
-        height: auto;
-        border: solid $accent;
-        border-top: solid $accent-darken-2;
-        padding: 0 2;
-        background: $panel;
-        color: $text;
+    #yaml-preview {
+        width: 70%;
+        height: 100%;
     }
     """
 
-    current_repo = reactive("Select a repo")
-    current_context = reactive("")
-    connection_status = reactive("Loading repos...")
-    current_namespace = reactive("default")
-    # Panel focus state: tracks which panel currently has focus
-    current_panel = reactive("sidebar")  # "sidebar", "table", or "search"
-    search_active: reactive[bool] = reactive(False)  # Tracks if search input is active
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._repos: List[Dict[str, Any]] = []
-        self._charts: List[Dict[str, Any]] = []
-        self._all_charts: List[Dict[str, Any]] = []
-        self._selected_repo: Optional[str] = None
-        self._selected_chart: Optional[str] = None
+    def on_mount(self) -> None:
+        """Initialize HelmScreen and set keybindings context."""
+        bar = self.query_one("#keybindings-bar", KeybindingsBar)
+        bar.update_context("helm", "tree", detail_open=False, search_active=False)
 
     def compose(self):
-        """Compose the helm screen."""
-        # Header with repo selector
-        with Vertical(id="header-container"):
-            yield Label("Repository:", id="repo-label")
-            with Horizontal(id="repo-selector"):
-                yield Button("Repos", id="btn-repos-list", variant="primary")
-
-        # Body with chart table and search
-        with Vertical(id="body-container"):
-            yield ResourceTable(id="chart-table")
-            yield SearchInput(id="search-input")
-
-        # Detail panel for deployment info
-        yield Label(id="detail-panel")
-
-        # Status bar
+        """Compose the two-panel filesystem browser layout."""
+        with Horizontal(id="helm-container"):
+            yield DirectoryTree(Path.cwd(), id="file-tree")
+            yield TextArea("", language="yaml", theme="monokai",
+                           read_only=True, id="yaml-preview")
         yield StatusBar(id="status-bar")
-
-        # Keybindings bar
         yield KeybindingsBar(id="keybindings-bar")
 
-    def on_mount(self) -> None:
-        """Initialize helm screen on mount."""
-        self.title = "Gantry - Helm Orchestration"
-        self._load_repos()
-        # Initialize panel focus to table (HelmScreen has no sidebar)
-        self.current_panel = "table"
-
-        # Initialize keybindings bar (helm screen has no detail panel or search)
-        self.keybindings_bar = self.query_one("#keybindings-bar", KeybindingsBar)
-        self.keybindings_bar.update_context("helm", "table", False, False)
-
-    def _load_repos(self) -> None:
-        """Load available Helm repositories."""
-        self._load_repos_worker()
-
-    @work(thread=True)
-    def _load_repos_worker(self) -> None:
-        """Worker to load repos without blocking UI."""
-        logger.debug("_load_repos_worker started")
-        from gantry import helm
-
-        repos = helm.list_repos()
-
-        # Filter out error entries
-        repos = [r for r in repos if "error" not in r]
-
-        logger.debug(f"_load_repos_worker completed: {len(repos)} repos loaded")
-        self.app.call_from_thread(self._apply_repos, repos)
-
-    def _apply_repos(self, repos: List[Dict[str, Any]]) -> None:
-        """Apply loaded repos on main thread."""
-        if repos:
-            self._repos = repos
-            self.connection_status = "Connected"
-            self._selected_repo = repos[0].get("name")
-            self._update_status_bar()
-            self._load_charts(self._selected_repo)
-        else:
-            self._repos = []
-            self.connection_status = "No repos configured"
-            self._update_status_bar()
-
-    def _load_charts(self, repo: str) -> None:
-        """Load charts from a specific repository."""
-        self._load_charts_worker(repo)
-
-    @work(thread=True)
-    def _load_charts_worker(self, repo: str) -> None:
-        """Worker to load charts without blocking UI."""
-        logger.debug(f"_load_charts_worker started for repo {repo}")
-        from gantry import helm
-
-        # Search for all charts in the repo by using an empty query
-        charts = helm.search_charts("*", repo=repo)
-
-        # Filter out error entries
-        charts = [c for c in charts if "error" not in c]
-
-        logger.debug(f"_load_charts_worker completed: {len(charts)} charts loaded from {repo}")
-        self.app.call_from_thread(self._apply_charts, repo, charts)
-
-    def _apply_charts(self, repo: str, charts: List[Dict[str, Any]]) -> None:
-        """Apply loaded charts on main thread."""
-        self._all_charts = charts
-        self._display_charts(charts)
-        self.current_repo = repo
-        if charts:
-            self.connection_status = f"Loaded {len(charts)} charts from {repo}"
-        else:
-            self.connection_status = f"No charts found in {repo}"
-        self._update_status_bar()
-
-    def _display_charts(self, charts: List[Dict[str, Any]]) -> None:
-        """Display charts in the table."""
-        table: ResourceTable = self.query_one("#chart-table", ResourceTable)
-
-        columns = ["Chart", "Version", "App Version", "Description"]
-        keys = ["name", "version", "app_version", "description"]
-
-        table.populate_resources(charts, columns, keys)
-        self._charts = charts
-
-    def _update_status_bar(self) -> None:
-        """Update the status bar with current info."""
+    def on_directory_tree_file_selected(
+        self, event: DirectoryTree.FileSelected
+    ) -> None:
+        """Load selected file content into the preview pane with syntax highlighting."""
+        path = event.path
+        status_bar = self.query_one("#status-bar", StatusBar)
+        text_area = self.query_one("#yaml-preview", TextArea)
         try:
-            status_bar: StatusBar = self.query_one("#status-bar", StatusBar)
-            status_bar.update_namespace(self.current_namespace)
-            status_bar.context = self.current_repo
-            status_bar.update_status(self.connection_status)
-        except Exception:
-            # Status bar not mounted yet, skip update
-            pass
-
-    def watch_current_panel(self, new_panel: str) -> None:
-        """React to current_panel changes."""
-        if hasattr(self, 'keybindings_bar'):
-            self.keybindings_bar.update_context(
-                "helm", new_panel, False, self.search_active
-            )
-
-    def watch_search_active(self, value: bool) -> None:
-        """React to search_active changes."""
-        if hasattr(self, 'keybindings_bar'):
-            self.keybindings_bar.update_context(
-                "helm", self.current_panel, False, value
-            )
-
-    def on_button_pressed(self, event) -> None:
-        """Handle button presses for repo selection."""
-        button_id = event.button.id
-        if button_id == "btn-repos-list":
-            # Show repo list in detail panel
-            self._show_repo_list()
-
-    def _show_repo_list(self) -> None:
-        """Show the list of available repos."""
-        if not self._repos:
-            detail = "No repositories configured.\n\nUse 'helm repo add' to add repositories."
-        else:
-            lines = ["=== Available Repositories ===\n"]
-            for repo in self._repos:
-                name = repo.get("name", "Unknown")
-                url = repo.get("url", "Unknown")
-                lines.append(f"{name}: {url}")
-            detail = "\n".join(lines)
-
-        self._display_detail_panel(detail)
-
-    def _display_detail_panel(self, content: str) -> None:
-        """Display content in the detail panel."""
-        try:
-            detail_panel = self.query_one("#detail-panel", Label)
-            detail_panel.update(content)
-            detail_panel.add_class("show")
-        except Exception:
-            pass
-
-    def action_focus_search(self) -> None:
-        """Show and focus the search input (vim-style)."""
-        search_input: SearchInput = self.query_one("#search-input", SearchInput)
-        search_input.add_class("show")
-        search_input.focus()
-        self.search_active = True
-
-    def action_refresh_charts(self) -> None:
-        """Refresh the chart list."""
-        if self._selected_repo:
-            self._load_charts(self._selected_repo)
-
-    def action_focus_next_panel(self) -> None:
-        """Move focus to the next panel (right arrow).
-
-        HelmScreen only has a table panel; cycles back to table.
-        Search is only reachable via /.
-        """
-        # HelmScreen has only one navigable panel (table); stay on it.
-        next_panels = {
-            "sidebar": "table",  # Fallback if somehow in sidebar state
-            "table": "table",
-        }
-        next_panel = next_panels.get(self.current_panel, "table")
-        self.current_panel = next_panel
-
-        # Move focus to the target panel widget
-        try:
-            if next_panel == "table":
-                self.query_one("#chart-table", ResourceTable).focus()
-        except Exception as e:
-            logger.debug(f"Error focusing panel: {e}")
-
-    def action_focus_previous_panel(self) -> None:
-        """Move focus to the previous panel (left arrow).
-
-        HelmScreen only has a table panel; cycles back to table.
-        Search is only reachable via /.
-        """
-        # HelmScreen has only one navigable panel (table); stay on it.
-        prev_panels = {
-            "sidebar": "table",  # Fallback if somehow in sidebar state
-            "table": "table",
-        }
-        prev_panel = prev_panels.get(self.current_panel, "table")
-        self.current_panel = prev_panel
-
-        # Move focus to the target panel widget
-        try:
-            if prev_panel == "table":
-                self.query_one("#chart-table", ResourceTable).focus()
-        except Exception as e:
-            logger.debug(f"Error focusing panel: {e}")
-
-    def action_show_context_picker(self) -> None:
-        """Show the context/namespace picker modal."""
-        self._load_contexts_for_picker_worker()
-
-    @work(thread=True)
-    def _load_contexts_for_picker_worker(self) -> None:
-        """Load contexts in background for the picker modal."""
-        contexts = k8s.list_contexts()
-        self.app.call_from_thread(self._show_context_picker_modal, contexts)
-
-    def _show_context_picker_modal(self, contexts: List[Dict[str, Any]]) -> None:
-        """Show the context picker modal on main thread."""
-        if not contexts or any("error" in ctx for ctx in contexts):
-            self.connection_status = "Error: Unable to load contexts"
-            self._update_status_bar()
+            size = path.stat().st_size
+        except OSError as e:
+            logger.error("Failed to stat file %s: %s", path, e)
+            status_bar.update_status(f"Error reading file: {e}")
             return
-
-        # Find the active context from the list
-        current_context = next(
-            (ctx["name"] for ctx in contexts if ctx.get("current")), ""
-        )
-        self.current_context = current_context
-        modal = ContextPickerModal(contexts, current_context, self.current_namespace)
-        self.app.push_screen(modal, callback=self._on_context_picker_dismiss)
-
-    def _on_context_picker_dismiss(self, result: Optional[tuple]) -> None:
-        """Handle context picker result."""
-        if result:
-            new_context, new_namespace = result
-            if new_context != self.current_context:
-                self._switch_context_worker(new_context, new_namespace)
-            else:
-                # Only namespace changed
-                self.current_namespace = new_namespace
-                state.save_state(self.current_context, new_namespace)
-                self.connection_status = f"Switched namespace to '{new_namespace}'"
-                self._update_status_bar()
-
-    @work(thread=True)
-    def _switch_context_worker(self, new_context: str, new_namespace: str) -> None:
-        """Switch context in background thread."""
-        switch_result = k8s.switch_context(new_context)
-        self.app.call_from_thread(
-            self._apply_context_switch, new_context, new_namespace, switch_result
-        )
-
-    def _apply_context_switch(self, new_context: str, new_namespace: str, switch_result: Dict[str, Any]) -> None:
-        """Apply context switch result on main thread."""
-        if switch_result.get("success"):
-            self.current_context = new_context
-            self.current_namespace = new_namespace
-            state.save_state(new_context, new_namespace)
-            self.connection_status = f"Switched to context '{new_context}'"
-        else:
-            self.connection_status = f"Error: {switch_result.get('error', 'Failed to switch context')}"
-        self._update_status_bar()
-
-    def action_switch_screen(self, screen: str = "cluster") -> None:
-        """Switch screens via action."""
-        self.app.action_switch_screen()
-
-    def on_search_input_search_changed(self, message: SearchInput.SearchChanged) -> None:
-        """Handle search input changes and filter the table."""
-        table: ResourceTable = self.query_one("#chart-table", ResourceTable)
-        table.filter_by_search(message.value)
-        if not message.value:
-            self.search_active = False
-
-    def on_data_table_row_selected(self, message) -> None:
-        """Handle chart selection and trigger deploy flow."""
-        table: ResourceTable = self.query_one("#chart-table", ResourceTable)
-
-        if table.cursor_row is not None and 0 <= table.cursor_row < len(self._charts):
-            chart = self._charts[table.cursor_row]
-            self._selected_chart = chart.get("name", "Unknown")
-            self._show_deploy_dialog(self._selected_chart)
-
-    def _show_deploy_dialog(self, chart_name: str) -> None:
-        """Show deployment confirmation dialog."""
-        detail = f"=== Deploy Chart ===\n\nChart: {chart_name}\nNamespace: {self.current_namespace}\n\n"
-        detail += "Press Enter to deploy or press any other key to cancel."
-
-        self._display_detail_panel(detail)
-        self.connection_status = f"Selected chart: {chart_name}"
-        self._update_status_bar()
-
-    def action_execute_action(self, action_name: str = "deploy") -> None:
-        """Execute an action (for deployment confirmation)."""
-        if action_name == "deploy" and self._selected_chart:
-            self._deploy_chart(self._selected_chart)
-
-    def _deploy_chart(self, chart_name: str) -> None:
-        """Deploy a Helm chart."""
-        # Reject "all" as a Helm deployment namespace
-        if self.current_namespace == "all":
-            self.connection_status = "Select a concrete namespace before deploying"
-            self._update_status_bar()
+        if size > self._MAX_PREVIEW_BYTES:
+            status_bar.update_status(f"Skipped large file {path.name} ({size:,} bytes)")
+            text_area.load_text(f"<file too large to preview: {size:,} bytes>")
+            text_area.language = None
             return
-
-        # Extract chart name parts
-        chart_parts = chart_name.split("/")
-        if len(chart_parts) == 2:
-            repo, chart = chart_parts
+        try:
+            content = path.read_text(errors="replace")
+        except OSError as e:
+            logger.error("Failed to read file %s: %s", path, e)
+            status_bar.update_status(f"Error reading file: {e}")
+            return
+        status_bar.update_status(f"Loaded {path.name}")
+        text_area.load_text(content)
+        suffix = path.suffix.lower()
+        if suffix in (".yaml", ".yml"):
+            text_area.language = "yaml"
+        elif suffix == ".json":
+            text_area.language = "json"
         else:
-            chart = chart_parts[-1]
-            repo = None
+            text_area.language = None
 
-        # Generate release name from chart name
-        release_name = chart.replace("/", "-").replace("_", "-").lower()
-
-        self._deploy_chart_worker(release_name, chart_name)
-
-    @work(thread=True)
-    def _deploy_chart_worker(self, release_name: str, chart_name: str) -> None:
-        """Worker to install chart without blocking UI."""
-        logger.debug(f"_deploy_chart_worker started: release_name={release_name}, chart_name={chart_name}")
-        from gantry import helm
-
-        result = helm.install_chart(
-            release_name,
-            chart_name,
-            namespace=self.current_namespace
-        )
-
-        if result.get("success"):
-            detail = f"=== Deployment Successful ===\n\n{result.get('message', 'Chart deployed')}"
-            status = f"Deployed: {release_name}"
-            logger.debug(f"_deploy_chart_worker completed: {chart_name} deployed as {release_name}")
-        else:
-            error_msg = result.get("error", "Unknown error")
-            detail = f"=== Deployment Failed ===\n\nError: {error_msg}"
-            status = f"Error: {error_msg[:50]}"
-            logger.error(f"_deploy_chart_worker failed: {error_msg}")
-
-        self.app.call_from_thread(self._apply_deploy_result, detail, status)
-
-    def _apply_deploy_result(self, detail: str, status: str) -> None:
-        """Apply deployment result on main thread."""
-        self.connection_status = status
-        self._display_detail_panel(detail)
-        self._update_status_bar()
+    def action_refresh(self) -> None:
+        """Reload the directory tree from disk."""
+        self.query_one("#file-tree", DirectoryTree).reload()
