@@ -1137,7 +1137,7 @@ class HelmScreen(Screen):
     def on_mount(self) -> None:
         """Initialize HelmScreen and set keybindings context."""
         bar = self.query_one("#keybindings-bar", KeybindingsBar)
-        bar.update_context("helm", "table", detail_open=False, search_active=False)
+        bar.update_context("helm", "tree", detail_open=False, search_active=False)
 
     def compose(self):
         with Horizontal(id="helm-container"):
@@ -1155,7 +1155,7 @@ class HelmScreen(Screen):
             content = path.read_text(errors="replace")
         except Exception as e:
             logger.error("Failed to read file %s: %s", path, e)
-            self.query_one("#status-bar", StatusBar).update(f"Error reading file: {e}")
+            self.query_one("#status-bar", StatusBar).update_status(f"Error reading file: {e}")
             content = ""
         text_area = self.query_one("#yaml-preview", TextArea)
         text_area.load_text(content)
