@@ -1,7 +1,7 @@
 import logging
 from pygments.lexers import get_lexer_by_name
 from pygments.lexer import RegexLexer
-from pygments.token import Keyword, Name, String, Number, Comment, Operator, Punctuation, Whitespace, Token
+from pygments.token import Keyword, Name, String, Number, Comment, Operator, Punctuation, Whitespace, Token, Text as PygmentsText
 from pygments.styles import get_style_by_name
 from rich.text import Text
 
@@ -22,8 +22,14 @@ class GoTemplateLexer(RegexLexer):
 
     tokens = {
         "root": [
-            (r"\{\{-?", Punctuation),
-            (r"-?\}\}", Punctuation),
+            (r"\{\{-?", Punctuation, "template"),
+            (r"#[^\n]*", Comment.Single),
+            (r"[^\{#]+", PygmentsText),
+            (r"\{(?!\{)", PygmentsText),
+            (r".", PygmentsText),
+        ],
+        "template": [
+            (r"-?\}\}", Punctuation, "#pop"),
             (r"\b(if|else|end|range|define|template|block|with)\b", Keyword),
             (r"\b(and|or|not|eq|ne|lt|le|gt|ge|call|html|js|index|len|slice|print|printf|println|urlquery)\b", Name.Builtin),
             (r"\$\w+", Name.Variable),
@@ -34,10 +40,9 @@ class GoTemplateLexer(RegexLexer):
             (r"-?\d+", Number.Integer),
             (r"\b(true|false|nil)\b", Keyword.Constant),
             (r"[|:=]", Operator),
-            (r"#.*$", Comment.Single),
             (r"\s+", Whitespace),
-            (r".", Whitespace),
-        ]
+            (r".", PygmentsText),
+        ],
     }
 
 
