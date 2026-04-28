@@ -8,7 +8,7 @@ from rich.text import Text
 logger = logging.getLogger(__name__)
 
 # Theme name: configurable per user preference
-THEME = "monokai"
+THEME = "zenburn"  # Default theme, can be changed via set_theme()
 
 # Cache for style lookups
 _style_cache = {}
