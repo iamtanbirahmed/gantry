@@ -1151,7 +1151,7 @@ class HelmScreen(Screen):
         with Horizontal(id="helm-container"):
             yield DirectoryTree(Path.cwd(), id="file-tree")
             with ScrollableContainer(id="preview-container"):
-                yield Static("", id="yaml-preview")
+                yield Static("", id="yaml-preview", markup=False)
         yield StatusBar(id="status-bar")
         yield KeybindingsBar(id="keybindings-bar")
 
