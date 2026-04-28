@@ -1130,9 +1130,14 @@ class HelmScreen(Screen):
         border-right: solid $accent;
         background: $panel;
     }
-    #yaml-preview {
+    #preview-container {
         width: 70%;
         height: 100%;
+    }
+    #yaml-preview {
+        width: 100%;
+        height: 100%;
+        overflow: auto;
     }
     """
 
@@ -1145,8 +1150,8 @@ class HelmScreen(Screen):
         """Compose the two-panel filesystem browser layout."""
         with Horizontal(id="helm-container"):
             yield DirectoryTree(Path.cwd(), id="file-tree")
-            yield TextArea("", language="yaml", theme="monokai",
-                           read_only=True, id="yaml-preview")
+            with ScrollableContainer(id="preview-container"):
+                yield Static("", id="yaml-preview")
         yield StatusBar(id="status-bar")
         yield KeybindingsBar(id="keybindings-bar")
 
@@ -1156,7 +1161,7 @@ class HelmScreen(Screen):
         """Load selected file content into the preview pane with syntax highlighting."""
         path = event.path
         status_bar = self.query_one("#status-bar", StatusBar)
-        text_area = self.query_one("#yaml-preview", TextArea)
+        preview = self.query_one("#yaml-preview", Static)
         try:
             size = path.stat().st_size
         except OSError as e:
@@ -1165,8 +1170,7 @@ class HelmScreen(Screen):
             return
         if size > self._MAX_PREVIEW_BYTES:
             status_bar.update_status(f"Skipped large file {path.name} ({size:,} bytes)")
-            text_area.load_text(f"<file too large to preview: {size:,} bytes>")
-            text_area.language = None
+            preview.update(f"<file too large to preview: {size:,} bytes>")
             return
         try:
             content = path.read_text(errors="replace")
@@ -1174,15 +1178,28 @@ class HelmScreen(Screen):
             logger.error("Failed to read file %s: %s", path, e)
             status_bar.update_status(f"Error reading file: {e}")
             return
-        status_bar.update_status(f"Loaded {path.name}")
-        text_area.load_text(content)
+
         suffix = path.suffix.lower()
-        if suffix in (".yaml", ".yml"):
-            text_area.language = "yaml"
-        elif suffix == ".json":
-            text_area.language = "json"
-        else:
-            text_area.language = None
+        is_template = suffix == ".tpl" or (
+            suffix in (".yaml", ".yml") and "templates" in path.parts
+        )
+
+        status_bar.update_status(f"Loaded {path.name}")
+
+        try:
+            if is_template:
+                from gantry.highlight import highlight_go_template
+                highlighted = highlight_go_template(content)
+                preview.update(highlighted)
+            elif suffix in (".yaml", ".yml"):
+                from gantry.highlight import highlight_yaml
+                highlighted = highlight_yaml(content)
+                preview.update(highlighted)
+            else:
+                preview.update(content)
+        except Exception as e:
+            logger.warning(f"Failed to highlight file: {e}")
+            preview.update(content)
 
     def action_refresh(self) -> None:
         """Reload the directory tree from disk."""
