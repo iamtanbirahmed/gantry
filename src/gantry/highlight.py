@@ -3,6 +3,7 @@ from pygments.lexers import get_lexer_by_name
 from pygments.lexer import RegexLexer
 from pygments.token import Keyword, Name, String, Number, Comment, Operator, Punctuation, Whitespace, Token, Text as PygmentsText
 from pygments.styles import get_style_by_name
+from pygments.util import ClassNotFound
 from rich.text import Text
 
 logger = logging.getLogger(__name__)
@@ -69,7 +70,7 @@ def _get_rich_style(token_type) -> str:
         rich_style = " ".join(parts) if parts else "white"
         _style_cache[token_type] = rich_style
         return rich_style
-    except Exception:
+    except (ClassNotFound, KeyError, AttributeError, ValueError):
         _style_cache[token_type] = "white"
         return "white"
 
@@ -94,7 +95,7 @@ def highlight_yaml(content: str) -> Text:
         lexer = get_lexer_by_name("yaml")
         tokens = list(lexer.get_tokens(content))
         return _tokens_to_rich(tokens)
-    except Exception as e:
+    except (ClassNotFound, ValueError, TypeError) as e:
         logger.warning(f"YAML highlighting failed: {e}")
         return Text(content)
 
@@ -105,7 +106,7 @@ def highlight_go_template(content: str) -> Text:
         lexer = GoTemplateLexer()
         tokens = list(lexer.get_tokens(content))
         return _tokens_to_rich(tokens)
-    except Exception as e:
+    except (ValueError, TypeError) as e:
         logger.warning(f"Go template highlighting failed: {e}")
         return Text(content)
 
@@ -118,7 +119,7 @@ def set_theme(theme_name: str) -> None:
         THEME = theme_name
         _style_cache.clear()
         logger.debug(f"Switched to theme: {theme_name}")
-    except Exception as e:
+    except ClassNotFound as e:
         logger.error(f"Theme '{theme_name}' not found: {e}")
 
 
