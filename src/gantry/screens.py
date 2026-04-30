@@ -1139,6 +1139,22 @@ class HelmScreen(Screen):
         height: 100%;
         overflow: auto;
     }
+    StatusBar {
+        height: auto;
+        border: solid $accent;
+        border-bottom: solid $accent-darken-2;
+        padding: 0 2;
+        background: $panel;
+        color: $text;
+    }
+    #keybindings-bar {
+        height: auto;
+        border: solid $accent;
+        border-top: solid $accent-darken-2;
+        padding: 0 2;
+        background: $panel;
+        color: $text;
+    }
     """
 
     def on_mount(self) -> None:
