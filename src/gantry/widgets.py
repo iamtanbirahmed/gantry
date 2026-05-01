@@ -305,16 +305,18 @@ class KeybindingsBar(Static):
         - current_panel: Focused panel (tracked for future context-aware hints)
         - detail_panel_open: Whether detail panel is open
         - search_active: Whether search is active
+        - helm_preview_open: Whether the Helm file preview is showing content
         """
         super().__init__(*args, **kwargs)
         self.screen_type = "cluster"  # "cluster" or "helm"
         self.current_panel = "sidebar"  # "sidebar", "table", "detail", "search"
         self.detail_panel_open = False
         self.search_active = False
+        self.helm_preview_open = False
         # Render initial content immediately so Static has something to show on first paint
         self.update(self._build_text())
 
-    def update_context(self, screen_type: str, current_panel: str, detail_open: bool, search_active: bool) -> None:
+    def update_context(self, screen_type: str, current_panel: str, detail_open: bool, search_active: bool, helm_preview_open: bool = False) -> None:
         """Update the context state and refresh the display.
 
         Args:
@@ -322,16 +324,18 @@ class KeybindingsBar(Static):
             current_panel: "sidebar", "table", "detail", or "search" (tracked for future context-aware enhancements)
             detail_open: whether detail panel is open
             search_active: whether search is active
+            helm_preview_open: whether the Helm file preview pane is showing content
         """
         self.screen_type = screen_type
         self.current_panel = current_panel
         self.detail_panel_open = detail_open
         self.search_active = search_active
+        self.helm_preview_open = helm_preview_open
         self.update(self._build_text())
 
     def _build_text(self) -> str:
         """Build keybindings string based on current context."""
-        # Case 1: Detail panel open
+        # Case 1: Detail panel open (cluster screen)
         if self.detail_panel_open:
             return "← Back | → Forward | Esc Close | ↑↓ Scroll"
 
@@ -339,7 +343,11 @@ class KeybindingsBar(Static):
         if self.search_active:
             return "Esc Cancel | ↵ Select"
 
-        # Case 3 & 4: Normal state (depends on screen type)
+        # Case 3: Helm screen with file preview showing
+        if self.screen_type == "helm" and self.helm_preview_open:
+            return "↑↓ Navigate | ↵ Expand | Esc Clear preview | r Refresh | Tab Cluster | q Quit"
+
+        # Case 4 & 5: Normal state (depends on screen type)
         if self.screen_type == "cluster":
             return "←→ Navigate | d Describe | l Logs | r Refresh | c Context | / Search | Tab Helm | q Quit"
         elif self.screen_type == "helm":

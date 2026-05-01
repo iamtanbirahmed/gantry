@@ -11,7 +11,7 @@ from textual.widget import Widget
 from textual.binding import Binding
 from textual.message import Message
 from textual import work
-from textual.reactive import reactive
+from textual.reactive import Reactive, reactive
 from textual.css.query import NoMatches
 import json
 
@@ -1116,9 +1116,11 @@ class HelmScreen(Screen):
     BINDINGS = [
         ("tab", "app.action_switch_screen", "Cluster View"),
         ("r", "refresh", "Refresh"),
+        ("escape", "escape", "Clear preview"),
         ("q", "quit", "Quit"),
     ]
 
+    _file_loaded: Reactive[bool] = reactive(False)
     _MAX_PREVIEW_BYTES = 1_000_000  # 1 MB
 
     CSS = """
@@ -1162,6 +1164,12 @@ class HelmScreen(Screen):
         bar = self.query_one("#keybindings-bar", KeybindingsBar)
         bar.update_context("helm", "tree", detail_open=False, search_active=False)
 
+    def check_action(self, action: str, parameters: tuple) -> bool | None:
+        """Disable escape action when no file is loaded."""
+        if action == "escape":
+            return self._file_loaded or None
+        return True
+
     def compose(self):
         """Compose the two-panel filesystem browser layout."""
         with Horizontal(id="helm-container"):
@@ -1187,6 +1195,9 @@ class HelmScreen(Screen):
         if size > self._MAX_PREVIEW_BYTES:
             status_bar.update_status(f"Skipped large file {path.name} ({size:,} bytes)")
             preview.update(f"<file too large to preview: {size:,} bytes>")
+            self._file_loaded = True
+            bar = self.query_one("#keybindings-bar", KeybindingsBar)
+            bar.update_context("helm", "tree", detail_open=False, search_active=False, helm_preview_open=True)
             return
         try:
             content = path.read_text(errors="replace")
@@ -1216,6 +1227,21 @@ class HelmScreen(Screen):
         except Exception as e:
             logger.warning(f"Failed to highlight file: {e}")
             preview.update(content)
+
+        self._file_loaded = True
+        bar = self.query_one("#keybindings-bar", KeybindingsBar)
+        bar.update_context("helm", "tree", detail_open=False, search_active=False, helm_preview_open=True)
+
+    def action_escape(self) -> None:
+        """Clear the preview pane and refocus the file tree."""
+        if not self._file_loaded:
+            return
+        self.query_one("#yaml-preview", Static).update("")
+        self.query_one("#status-bar", StatusBar).update_status("")
+        self._file_loaded = False
+        bar = self.query_one("#keybindings-bar", KeybindingsBar)
+        bar.update_context("helm", "tree", detail_open=False, search_active=False, helm_preview_open=False)
+        self.query_one("#file-tree", DirectoryTree).focus()
 
     def action_refresh(self) -> None:
         """Reload the directory tree from disk."""
