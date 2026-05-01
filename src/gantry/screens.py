@@ -1195,6 +1195,9 @@ class HelmScreen(Screen):
         if size > self._MAX_PREVIEW_BYTES:
             status_bar.update_status(f"Skipped large file {path.name} ({size:,} bytes)")
             preview.update(f"<file too large to preview: {size:,} bytes>")
+            self._file_loaded = True
+            bar = self.query_one("#keybindings-bar", KeybindingsBar)
+            bar.update_context("helm", "tree", detail_open=False, search_active=False, helm_preview_open=True)
             return
         try:
             content = path.read_text(errors="replace")
@@ -1227,7 +1230,7 @@ class HelmScreen(Screen):
 
         self._file_loaded = True
         bar = self.query_one("#keybindings-bar", KeybindingsBar)
-        bar.update_context("helm", "tree", detail_open=True, search_active=False)
+        bar.update_context("helm", "tree", detail_open=False, search_active=False, helm_preview_open=True)
 
     def action_escape(self) -> None:
         """Clear the preview pane and refocus the file tree."""
@@ -1237,7 +1240,7 @@ class HelmScreen(Screen):
         self.query_one("#status-bar", StatusBar).update_status("")
         self._file_loaded = False
         bar = self.query_one("#keybindings-bar", KeybindingsBar)
-        bar.update_context("helm", "tree", detail_open=False, search_active=False)
+        bar.update_context("helm", "tree", detail_open=False, search_active=False, helm_preview_open=False)
         self.query_one("#file-tree", DirectoryTree).focus()
 
     def action_refresh(self) -> None:
