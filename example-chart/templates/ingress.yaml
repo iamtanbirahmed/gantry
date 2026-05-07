@@ -1,4 +1,7 @@
 {{- if .Values.ingress.enabled }}
+{{- if not (or .Values.frontend.enabled .Values.backend.enabled) }}
+{{- fail "ingress.enabled requires at least one of frontend.enabled or backend.enabled to be true" }}
+{{- end }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
