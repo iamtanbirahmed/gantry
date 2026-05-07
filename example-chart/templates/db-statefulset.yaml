@@ -30,6 +30,11 @@ spec:
       - name: redis
         image: "{{ .Values.db.image.repository }}:{{ .Values.db.image.tag }}"
         imagePullPolicy: {{ .Values.db.image.pullPolicy }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
         ports:
         - name: redis
           containerPort: {{ .Values.db.port }}
@@ -48,19 +53,17 @@ spec:
         livenessProbe:
           exec:
             command:
-            - redis-cli
-            - "-a"
-            - "$(REDIS_PASSWORD)"
-            - "PING"
+            - sh
+            - -c
+            - redis-cli -a "$REDIS_PASSWORD" PING
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           exec:
             command:
-            - redis-cli
-            - "-a"
-            - "$(REDIS_PASSWORD)"
-            - "PING"
+            - sh
+            - -c
+            - redis-cli -a "$REDIS_PASSWORD" PING
           initialDelaySeconds: 10
           periodSeconds: 5
         resources:

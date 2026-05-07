@@ -10,9 +10,11 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className | quote }}
+  {{- end }}
   rules:
-  - host: {{ .Values.ingress.host }}
+  - host: {{ required "ingress.host is required" .Values.ingress.host | quote }}
     http:
       paths:
       - path: /api
@@ -21,12 +23,12 @@ spec:
           service:
             name: {{ include "example-chart.fullname" . }}-backend-svc
             port:
-              number: {{ .Values.backend.port }}
+              number: {{ .Values.backend.port | default 8080 }}
       - path: /
         pathType: Prefix
         backend:
           service:
             name: {{ include "example-chart.fullname" . }}-frontend-svc
             port:
-              number: {{ .Values.frontend.port }}
+              number: {{ .Values.frontend.port | default 80 }}
 {{- end }}

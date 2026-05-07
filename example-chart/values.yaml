@@ -1,13 +1,12 @@
-global:
-  nameOverride: ""
-  fullnameOverride: ""
+nameOverride: ""
+fullnameOverride: ""
 
 frontend:
   enabled: true
   replicaCount: 2
   image:
     repository: nginx
-    tag: alpine
+    tag: "1.27-alpine"
     pullPolicy: IfNotPresent
   port: 80
   resources:
@@ -28,7 +27,7 @@ backend:
   replicaCount: 1
   image:
     repository: ealen/echo-server
-    tag: latest
+    tag: "0.9.2"
     pullPolicy: IfNotPresent
   port: 8080
   resources:
@@ -51,7 +50,7 @@ db:
     tag: "7-alpine"
     pullPolicy: IfNotPresent
   port: 6379
-  password: "changeme123"
+  password: ""  # OVERRIDE AT DEPLOY TIME - do not commit real credentials
   persistence:
     enabled: true
     size: 1Gi
@@ -69,9 +68,8 @@ ingress:
   className: nginx
   host: example.local
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
     nginx.ingress.kubernetes.io/enable-cors: "true"
-    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://example.com"
   tls:
     enabled: false
 
@@ -80,7 +78,7 @@ cronjob:
   schedule: "*/5 * * * *"
   image:
     repository: curlimages/curl
-    tag: latest
+    tag: "8.11.0"
     pullPolicy: IfNotPresent
 
 networkPolicy:

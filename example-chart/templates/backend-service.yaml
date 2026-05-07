@@ -9,7 +9,7 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-  - port: {{ .Values.backend.port }}
+  - port: {{ .Values.backend.port | default 8080 }}
     targetPort: http
     protocol: TCP
     name: http

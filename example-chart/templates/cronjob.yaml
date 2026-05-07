@@ -10,6 +10,7 @@ spec:
   schedule: {{ .Values.cronjob.schedule | quote }}
   jobTemplate:
     spec:
+      activeDeadlineSeconds: 300
       backoffLimit: 1
       template:
         metadata:
@@ -22,8 +23,13 @@ spec:
           containers:
           - name: curl
             image: "{{ .Values.cronjob.image.repository }}:{{ .Values.cronjob.image.tag }}"
+            imagePullPolicy: {{ .Values.cronjob.image.pullPolicy }}
             command:
             - curl
             - "-sf"
+            - "--connect-timeout"
+            - "5"
+            - "--max-time"
+            - "10"
             - "http://{{ include "example-chart.fullname" . }}-frontend-svc:{{ .Values.frontend.port }}/health"
 {{- end }}

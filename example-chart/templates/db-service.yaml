@@ -10,7 +10,7 @@ metadata:
 spec:
   clusterIP: None
   ports:
-  - port: {{ .Values.db.port }}
+  - port: {{ .Values.db.port | default 6379 }}
     targetPort: redis
     protocol: TCP
     name: redis
@@ -30,7 +30,7 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-  - port: {{ .Values.db.port }}
+  - port: {{ .Values.db.port | default 6379 }}
     targetPort: redis
     protocol: TCP
     name: redis

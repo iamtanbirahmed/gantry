@@ -51,7 +51,8 @@ spec:
           {{- toYaml .Values.frontend.resources | nindent 12 }}
         volumeMounts:
         - name: config
-          mountPath: /etc/nginx
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
           readOnly: true
         - name: html
           mountPath: /usr/share/nginx/html
