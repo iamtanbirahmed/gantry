@@ -70,8 +70,11 @@ ingress:
   annotations:
     nginx.ingress.kubernetes.io/enable-cors: "true"
     nginx.ingress.kubernetes.io/cors-allow-origin: "https://example.com"
-  tls:
-    enabled: false
+  tls: []
+  # tls:
+  #   - hosts:
+  #       - example.local
+  #     secretName: example-tls
 
 cronjob:
   enabled: true
