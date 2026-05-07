@@ -1,0 +1,80 @@
+{{- if .Values.db.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "example-chart.fullname" . }}-db
+  labels:
+    {{- include "example-chart.labels" . | nindent 4 }}
+    app: db
+spec:
+  serviceName: {{ include "example-chart.fullname" . }}-db-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "example-chart.selectorLabels" . | nindent 6 }}
+      app: db
+  template:
+    metadata:
+      labels:
+        {{- include "example-chart.selectorLabels" . | nindent 8 }}
+        app: db
+      annotations:
+        prometheus.io/scrape: "false"
+    spec:
+      serviceAccountName: {{ include "example-chart.fullname" . }}-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        fsGroup: 999
+      containers:
+      - name: redis
+        image: "{{ .Values.db.image.repository }}:{{ .Values.db.image.tag }}"
+        imagePullPolicy: {{ .Values.db.image.pullPolicy }}
+        ports:
+        - name: redis
+          containerPort: {{ .Values.db.port }}
+          protocol: TCP
+        command:
+        - redis-server
+        args:
+        - "--requirepass"
+        - "$(REDIS_PASSWORD)"
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "example-chart.fullname" . }}-secret
+              key: redis-password
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - "-a"
+            - "$(REDIS_PASSWORD)"
+            - "PING"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - "-a"
+            - "$(REDIS_PASSWORD)"
+            - "PING"
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources:
+          {{- toYaml .Values.db.resources | nindent 12 }}
+        volumeMounts:
+        - name: data
+          mountPath: /data
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: {{ .Values.db.persistence.storageClassName }}
+      resources:
+        requests:
+          storage: {{ .Values.db.persistence.size }}
+{{- end }}
