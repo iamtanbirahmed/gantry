@@ -21,7 +21,7 @@ spec:
       annotations:
         prometheus.io/scrape: "false"
     spec:
-      serviceAccountName: {{ include "example-chart.fullname" . }}-sa
+      serviceAccountName: {{ include "example-chart.serviceAccountName" . }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 999

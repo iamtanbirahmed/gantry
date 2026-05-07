@@ -17,20 +17,17 @@ spec:
         {{- include "example-chart.selectorLabels" . | nindent 8 }}
         app: job-db-seed
     spec:
-      serviceAccountName: {{ include "example-chart.fullname" . }}-sa
+      serviceAccountName: {{ include "example-chart.serviceAccountName" . }}
       restartPolicy: Never
       containers:
       - name: redis-seed
         image: "{{ .Values.db.image.repository }}:{{ .Values.db.image.tag }}"
-        command:
-        - redis-cli
-        - "-h"
-        - {{ include "example-chart.fullname" . }}-db-svc
-        - "-a"
-        - "$(REDIS_PASSWORD)"
-        - "SET"
-        - "gantry:example"
-        - '{"message": "Hello from Gantry Example Chart", "timestamp": "2026-05-06"}'
+        command: ["/bin/sh", "-c"]
+        args:
+        - >
+          redis-cli -h {{ include "example-chart.fullname" . }}-db-svc
+          -a "$REDIS_PASSWORD"
+          SET gantry:example '{"message":"Hello from Gantry Example Chart","timestamp":"2026-05-06"}'
         env:
         - name: REDIS_PASSWORD
           valueFrom:

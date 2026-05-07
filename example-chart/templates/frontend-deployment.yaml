@@ -22,7 +22,7 @@ spec:
       annotations:
         prometheus.io/scrape: "false"
     spec:
-      serviceAccountName: {{ include "example-chart.fullname" . }}-sa
+      serviceAccountName: {{ include "example-chart.serviceAccountName" . }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 101
@@ -31,6 +31,13 @@ spec:
       - name: nginx
         image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
         imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+            add:
+            - NET_BIND_SERVICE
         ports:
         - name: http
           containerPort: {{ .Values.frontend.port }}

@@ -44,7 +44,7 @@ spec:
           name: ingress-nginx
     ports:
     - protocol: TCP
-      port: 80
+      port: {{ .Values.frontend.port | default 80 }}
   egress:
   - to:
     - podSelector:
@@ -52,7 +52,7 @@ spec:
           app: backend
     ports:
     - protocol: TCP
-      port: 8080
+      port: {{ .Values.backend.port | default 8080 }}
   - to:
     - namespaceSelector: {}
     ports:
@@ -83,7 +83,7 @@ spec:
           app: frontend
     ports:
     - protocol: TCP
-      port: 8080
+      port: {{ .Values.backend.port | default 8080 }}
   egress:
   - to:
     - podSelector:
@@ -91,7 +91,7 @@ spec:
           app: db
     ports:
     - protocol: TCP
-      port: 6379
+      port: {{ .Values.db.port | default 6379 }}
   - to:
     - namespaceSelector: {}
     ports:
@@ -122,14 +122,14 @@ spec:
           app: backend
     ports:
     - protocol: TCP
-      port: 6379
+      port: {{ .Values.db.port | default 6379 }}
   - from:
     - podSelector:
         matchLabels:
           app: job-db-seed
     ports:
     - protocol: TCP
-      port: 6379
+      port: {{ .Values.db.port | default 6379 }}
   egress:
   - to:
     - namespaceSelector: {}

@@ -41,8 +41,8 @@ data:
 
         location /health {
           access_log off;
-          return 200 "healthy\n";
           add_header Content-Type text/plain;
+          return 200 "healthy\n";
         }
       }
     }
@@ -85,14 +85,8 @@ data:
       </div>
 
       <script>
-        // Get pod info from metadata
-        fetch('/var/run/secrets/kubernetes.io/serviceaccount/namespace', { method: 'GET' })
-          .catch(() => {
-            document.getElementById('pod-name').textContent = 'Pod Name: (not available)';
-            document.getElementById('pod-namespace').textContent = 'Namespace: (not available)';
-          });
-
-        document.getElementById('pod-name').textContent = 'Pod Name: ' + (process.env.HOSTNAME || 'unknown');
+        // Pod metadata is not accessible from browser JS without server-side injection
+        document.getElementById('pod-name').textContent = 'Pod Name: (not available in browser)';
         document.getElementById('pod-namespace').textContent = 'Namespace: (see cluster info)';
 
         function callBackend() {

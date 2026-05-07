@@ -17,6 +17,7 @@ spec:
   - host: {{ required "ingress.host is required" .Values.ingress.host | quote }}
     http:
       paths:
+      {{- if .Values.backend.enabled }}
       - path: /api
         pathType: Prefix
         backend:
@@ -24,6 +25,8 @@ spec:
             name: {{ include "example-chart.fullname" . }}-backend-svc
             port:
               number: {{ .Values.backend.port | default 8080 }}
+      {{- end }}
+      {{- if .Values.frontend.enabled }}
       - path: /
         pathType: Prefix
         backend:
@@ -31,4 +34,5 @@ spec:
             name: {{ include "example-chart.fullname" . }}-frontend-svc
             port:
               number: {{ .Values.frontend.port | default 80 }}
+      {{- end }}
 {{- end }}

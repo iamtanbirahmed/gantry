@@ -18,7 +18,7 @@ spec:
             {{- include "example-chart.selectorLabels" . | nindent 12 }}
             app: cronjob-health-ping
         spec:
-          serviceAccountName: {{ include "example-chart.fullname" . }}-sa
+          serviceAccountName: {{ include "example-chart.serviceAccountName" . }}
           restartPolicy: Never
           containers:
           - name: curl

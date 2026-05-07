@@ -22,7 +22,7 @@ spec:
       annotations:
         prometheus.io/scrape: "false"
     spec:
-      serviceAccountName: {{ include "example-chart.fullname" . }}-sa
+      serviceAccountName: {{ include "example-chart.serviceAccountName" . }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -31,6 +31,11 @@ spec:
       - name: echo-server
         image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
         imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
         ports:
         - name: http
           containerPort: {{ .Values.backend.port }}
