@@ -81,3 +81,7 @@ cronjob:
 
 networkPolicy:
   enabled: true
+
+serviceAccount:
+  create: true
+  name: ""
