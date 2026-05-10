@@ -1,0 +1,29 @@
+language: "en-US"
+
+reviews:
+  profile: "assertive"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  auto_review:
+    enabled: true
+    drafts: false
+  finishing_touches:
+    docstrings: false
+
+path_filters:
+  - "!**/*.lock"
+  - "!**/gantry.log"
+  - "!plans/**"
+  - "!docs/superpowers/**"
+
+path_instructions:
+  - path: "src/gantry/screens.py"
+    instructions: "This file is large (38KB+). Focus on: async correctness, widget lifecycle, keybinding registration, and CSS class consistency."
+  - path: "src/gantry/k8s.py"
+    instructions: "K8s operations must never raise — return empty lists or error dicts. Check all error paths."
+  - path: "src/gantry/helm.py"
+    instructions: "Helm operations use subprocess. Verify no shell injection, all errors caught."
+  - path: "tests/**"
+    instructions: "Tests use pytest-asyncio. Verify mocks are scoped correctly and async fixtures use the right mode."
