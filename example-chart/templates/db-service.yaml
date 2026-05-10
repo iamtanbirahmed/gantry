@@ -1,0 +1,40 @@
+{{- if .Values.db.enabled }}
+# Headless service for StatefulSet
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "example-chart.fullname" . }}-db-headless
+  labels:
+    {{- include "example-chart.labels" . | nindent 4 }}
+    app: db
+spec:
+  clusterIP: None
+  ports:
+  - port: {{ .Values.db.port | default 6379 }}
+    targetPort: redis
+    protocol: TCP
+    name: redis
+  selector:
+    {{- include "example-chart.selectorLabels" . | nindent 4 }}
+    app: db
+
+---
+# Regular ClusterIP service for direct access
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "example-chart.fullname" . }}-db-svc
+  labels:
+    {{- include "example-chart.labels" . | nindent 4 }}
+    app: db
+spec:
+  type: ClusterIP
+  ports:
+  - port: {{ .Values.db.port | default 6379 }}
+    targetPort: redis
+    protocol: TCP
+    name: redis
+  selector:
+    {{- include "example-chart.selectorLabels" . | nindent 4 }}
+    app: db
+{{- end }}

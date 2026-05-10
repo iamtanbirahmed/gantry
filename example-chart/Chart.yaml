@@ -1,0 +1,12 @@
+apiVersion: v2
+name: example-chart
+description: A Helm chart for Gantry testing with comprehensive K8s resources
+type: application
+version: 0.1.0
+appVersion: "1.0"
+keywords:
+  - kubernetes
+  - gantry
+  - test-fixture
+maintainers:
+  - name: Gantry Team

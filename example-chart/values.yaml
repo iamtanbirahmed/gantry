@@ -1,0 +1,92 @@
+nameOverride: ""
+fullnameOverride: ""
+
+frontend:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: nginx
+    tag: "1.27-alpine"
+    pullPolicy: IfNotPresent
+  port: 80
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+  hpa:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+
+backend:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ealen/echo-server
+    tag: "0.9.2"
+    pullPolicy: IfNotPresent
+  port: 8080
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+  hpa:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 70
+
+db:
+  enabled: true
+  image:
+    repository: redis
+    tag: "7-alpine"
+    pullPolicy: IfNotPresent
+  port: 6379
+  password: ""  # OVERRIDE AT DEPLOY TIME - do not commit real credentials
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClassName: standard
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 100m
+      memory: 256Mi
+
+ingress:
+  enabled: true
+  className: nginx
+  host: example.local
+  annotations:
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://example.com"
+  tls: []
+  # tls:
+  #   - hosts:
+  #       - example.local
+  #     secretName: example-tls
+
+cronjob:
+  enabled: true
+  schedule: "*/5 * * * *"
+  image:
+    repository: curlimages/curl
+    tag: "8.11.0"
+    pullPolicy: IfNotPresent
+
+networkPolicy:
+  enabled: true
+
+serviceAccount:
+  create: true
+  name: ""

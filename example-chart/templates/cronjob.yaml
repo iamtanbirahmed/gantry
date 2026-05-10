@@ -1,0 +1,36 @@
+{{- if and .Values.cronjob.enabled .Values.frontend.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "example-chart.fullname" . }}-health-ping
+  labels:
+    {{- include "example-chart.labels" . | nindent 4 }}
+    app: cronjob-health-ping
+spec:
+  schedule: {{ .Values.cronjob.schedule | quote }}
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 300
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            {{- include "example-chart.selectorLabels" . | nindent 12 }}
+            app: cronjob-health-ping
+        spec:
+          serviceAccountName: {{ include "example-chart.serviceAccountName" . }}
+          restartPolicy: Never
+          containers:
+          - name: curl
+            image: "{{ .Values.cronjob.image.repository }}:{{ .Values.cronjob.image.tag }}"
+            imagePullPolicy: {{ .Values.cronjob.image.pullPolicy }}
+            command:
+            - curl
+            - "-sf"
+            - "--connect-timeout"
+            - "5"
+            - "--max-time"
+            - "10"
+            - "http://{{ include "example-chart.fullname" . }}-frontend-svc:{{ .Values.frontend.port }}/health"
+{{- end }}

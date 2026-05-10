@@ -1,0 +1,19 @@
+{{- if .Values.backend.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "example-chart.fullname" . }}-backend-svc
+  labels:
+    {{- include "example-chart.labels" . | nindent 4 }}
+    app: backend
+spec:
+  type: ClusterIP
+  ports:
+  - port: {{ .Values.backend.port | default 8080 }}
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    {{- include "example-chart.selectorLabels" . | nindent 4 }}
+    app: backend
+{{- end }}

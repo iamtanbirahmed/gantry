@@ -1,0 +1,19 @@
+{{- if .Values.frontend.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "example-chart.fullname" . }}-frontend-svc
+  labels:
+    {{- include "example-chart.labels" . | nindent 4 }}
+    app: frontend
+spec:
+  type: ClusterIP
+  ports:
+  - port: {{ .Values.frontend.port }}
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    {{- include "example-chart.selectorLabels" . | nindent 4 }}
+    app: frontend
+{{- end }}
