@@ -10,7 +10,8 @@ reviews:
     enabled: true
     drafts: false
   finishing_touches:
-    docstrings: false
+    docstrings:
+      enabled: false
 
 path_filters:
   - "!**/*.lock"
