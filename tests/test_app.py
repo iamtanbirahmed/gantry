@@ -817,3 +817,229 @@ async def test_yaml_language_preserved_after_toggle():
         await pilot.pause()
         text_area = screen.query_one("#yaml-content", TextArea)
         assert text_area.language == "yaml"
+
+
+# --- Multi-column Sort Tests ---
+
+def test_resource_table_initial_sort_state():
+    """ResourceTable starts with no sort columns and shift_held=False."""
+    table = ResourceTable()
+    assert table._sort_columns == []
+    assert table._column_keys == []
+    assert table._shift_held is False
+
+
+def test_resource_table_has_sort_attributes():
+    """ResourceTable exposes all sort-related instance attributes."""
+    table = ResourceTable()
+    assert hasattr(table, "_sort_columns")
+    assert hasattr(table, "_column_keys")
+    assert hasattr(table, "_shift_held")
+
+
+def test_resource_table_sort_items_no_sort():
+    """_sort_items returns items unchanged when no sort columns are set."""
+    table = ResourceTable()
+    table._sort_columns = []
+    items = [("row-0", ["b", "2"]), ("row-1", ["a", "1"])]
+    assert table._sort_items(items) == items
+
+
+def test_resource_table_sort_items_ascending():
+    """_sort_items sorts by column ascending."""
+    table = ResourceTable()
+    table._sort_columns = [(0, False)]
+    items = [
+        ("row-0", ["banana", "2"]),
+        ("row-1", ["apple", "1"]),
+        ("row-2", ["cherry", "3"]),
+    ]
+    result = table._sort_items(items)
+    assert [v[0] for _, v in result] == ["apple", "banana", "cherry"]
+
+
+def test_resource_table_sort_items_descending():
+    """_sort_items sorts by column descending."""
+    table = ResourceTable()
+    table._sort_columns = [(0, True)]
+    items = [
+        ("row-0", ["banana", "2"]),
+        ("row-1", ["apple", "1"]),
+        ("row-2", ["cherry", "3"]),
+    ]
+    result = table._sort_items(items)
+    assert [v[0] for _, v in result] == ["cherry", "banana", "apple"]
+
+
+def test_resource_table_sort_items_multicolumn():
+    """_sort_items handles multi-column sort with stable ordering."""
+    table = ResourceTable()
+    # Primary sort: col 1 (Status) ascending; secondary: col 0 (Name) ascending
+    table._sort_columns = [(1, False), (0, False)]
+    items = [
+        ("row-0", ["pod-b", "Running"]),
+        ("row-1", ["pod-a", "Pending"]),
+        ("row-2", ["pod-c", "Running"]),
+        ("row-3", ["pod-d", "Pending"]),
+    ]
+    result = table._sort_items(items)
+    names = [v[0] for _, v in result]
+    # Pending first (pod-a, pod-d), then Running (pod-b, pod-c)
+    assert names == ["pod-a", "pod-d", "pod-b", "pod-c"]
+
+
+def test_resource_table_sort_items_case_insensitive():
+    """_sort_items uses case-insensitive comparison."""
+    table = ResourceTable()
+    table._sort_columns = [(0, False)]
+    items = [
+        ("row-0", ["Zebra"]),
+        ("row-1", ["apple"]),
+        ("row-2", ["Banana"]),
+    ]
+    result = table._sort_items(items)
+    assert [v[0] for _, v in result] == ["apple", "Banana", "Zebra"]
+
+
+def test_compute_next_sort_single_column():
+    """First click sets primary sort ascending."""
+    table = ResourceTable()
+    table._compute_next_sort(col_idx=1, shift=False)
+    assert table._sort_columns == [(1, False)]
+
+
+def test_compute_next_sort_toggle_direction():
+    """Clicking the same column twice toggles direction."""
+    table = ResourceTable()
+    table._compute_next_sort(col_idx=1, shift=False)
+    assert table._sort_columns == [(1, False)]
+    table._compute_next_sort(col_idx=1, shift=False)
+    assert table._sort_columns == [(1, True)]
+
+
+def test_compute_next_sort_new_primary():
+    """Clicking a different column replaces primary sort."""
+    table = ResourceTable()
+    table._compute_next_sort(col_idx=0, shift=False)
+    table._compute_next_sort(col_idx=2, shift=False)
+    assert table._sort_columns == [(2, False)]
+
+
+def test_compute_next_sort_shift_adds_secondary():
+    """Shift+click on new column adds it as secondary sort."""
+    table = ResourceTable()
+    table._compute_next_sort(col_idx=0, shift=False)
+    table._compute_next_sort(col_idx=1, shift=True)
+    assert len(table._sort_columns) == 2
+    assert table._sort_columns[0] == (0, False)
+    assert table._sort_columns[1] == (1, False)
+
+
+def test_compute_next_sort_shift_toggles_existing():
+    """Shift+click on already-sorted column toggles its direction."""
+    table = ResourceTable()
+    table._compute_next_sort(col_idx=0, shift=False)
+    table._compute_next_sort(col_idx=1, shift=True)
+    assert table._sort_columns[1] == (1, False)
+    table._compute_next_sort(col_idx=1, shift=True)
+    assert table._sort_columns[1] == (1, True)
+
+
+def test_compute_next_sort_max_three_columns():
+    """Multi-column sort supports at most 3 columns; oldest is evicted."""
+    table = ResourceTable()
+    table._compute_next_sort(col_idx=0, shift=False)
+    table._compute_next_sort(col_idx=1, shift=True)
+    table._compute_next_sort(col_idx=2, shift=True)
+    assert len(table._sort_columns) == 3
+    table._compute_next_sort(col_idx=3, shift=True)
+    assert len(table._sort_columns) == 3
+    # col_idx=0 (oldest) should have been evicted
+    assert all(idx != 0 for idx, _ in table._sort_columns)
+
+
+@pytest.mark.asyncio
+async def test_resource_table_sort_resets_on_column_change():
+    """Sort resets when populate_resources is called with different columns."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+        table = screen.query_one("#resource-table", ResourceTable)
+
+        table.populate_resources(
+            [{"name": "pod-a", "status": "Running", "age": "1d"}],
+            ["Name", "Status", "Age"],
+            ["name", "status", "age"],
+        )
+        await pilot.pause()
+
+        table._compute_next_sort(col_idx=0, shift=False)
+        assert len(table._sort_columns) == 1
+
+        # Repopulate with different columns (simulate resource type switch)
+        table.populate_resources(
+            [{"name": "dep-a", "ready": "1/1", "age": "2d"}],
+            ["Name", "Ready", "Age"],
+            ["name", "ready", "age"],
+        )
+        await pilot.pause()
+
+        assert table._sort_columns == []
+
+
+@pytest.mark.asyncio
+async def test_resource_table_sort_maintained_on_same_columns():
+    """Sort is preserved when populate_resources is called with the same columns."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+        table = screen.query_one("#resource-table", ResourceTable)
+
+        table.populate_resources(
+            [{"name": "pod-b"}, {"name": "pod-a"}],
+            ["Name"],
+            ["name"],
+        )
+        await pilot.pause()
+
+        table._compute_next_sort(col_idx=0, shift=False)
+        assert table._sort_columns == [(0, False)]
+
+        # Refresh with same column layout
+        table.populate_resources(
+            [{"name": "pod-z"}, {"name": "pod-a"}],
+            ["Name"],
+            ["name"],
+        )
+        await pilot.pause()
+
+        assert table._sort_columns == [(0, False)]
+
+
+@pytest.mark.asyncio
+async def test_resource_table_sorted_rows_ascending():
+    """Rows should appear in ascending order after sort is applied."""
+    app = GantryApp()
+    async with app.run_test() as pilot:
+        screen = app.screen
+        assert isinstance(screen, ClusterScreen)
+        table = screen.query_one("#resource-table", ResourceTable)
+
+        resources = [
+            {"name": "pod-c", "status": "Running"},
+            {"name": "pod-a", "status": "Pending"},
+            {"name": "pod-b", "status": "Running"},
+        ]
+        table.populate_resources(resources, ["Name", "Status"], ["name", "status"])
+        await pilot.pause()
+
+        table._compute_next_sort(col_idx=0, shift=False)
+        await pilot.pause()
+
+        # Verify sort state is correct and _sort_items returns sorted order
+        assert table._sort_columns == [(0, False)]
+        sorted_items = table._sort_items(list(table._all_rows.items()))
+        sorted_names = [vals[0] for _, vals in sorted_items]
+        assert sorted_names == ["pod-a", "pod-b", "pod-c"]
