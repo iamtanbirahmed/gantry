@@ -94,10 +94,19 @@ class ResourceTable(DataTable):
         self._update_column_labels()
         self._apply_filter(self._search_term)
 
-    def _update_column_labels(self) -> None:
-        """Rewrite column header labels in-place to show sort indicators."""
+    def _build_column_label_text(self, col_name: str, col_idx: int) -> str:
+        """Return column label text with sort indicator appended if applicable."""
         sort_map = {idx: (rank, rev) for rank, (idx, rev) in enumerate(self._sort_columns)}
         multi = len(self._sort_columns) > 1
+        if col_idx in sort_map:
+            rank, rev = sort_map[col_idx]
+            indicator = "▼" if rev else "▲"
+            suffix = f" {indicator}{rank + 1}" if multi else f" {indicator}"
+            return col_name + suffix
+        return col_name
+
+    def _update_column_labels(self) -> None:
+        """Rewrite column header labels in-place to show sort indicators."""
         for col_key_obj, column in self.columns.items():
             key_str = str(getattr(col_key_obj, "value", col_key_obj))
             if not key_str.startswith("col_"):
@@ -108,14 +117,7 @@ class ResourceTable(DataTable):
                 continue
             if i >= len(self._columns):
                 continue
-            base = self._columns[i]
-            if i in sort_map:
-                rank, rev = sort_map[i]
-                indicator = "▼" if rev else "▲"
-                suffix = f" {indicator}{rank + 1}" if multi else f" {indicator}"
-                column.label = Text(base + suffix)
-            else:
-                column.label = Text(base)
+            column.label = Text(self._build_column_label_text(self._columns[i], i))
         self.refresh()
 
     def populate_resources(
@@ -144,18 +146,9 @@ class ResourceTable(DataTable):
         if list(columns) != old_columns:
             self._sort_columns.clear()
 
-        sort_map = {idx: (rank, rev) for rank, (idx, rev) in enumerate(self._sort_columns)}
-        multi = len(self._sort_columns) > 1
         for i, col in enumerate(columns):
             key = f"col_{i}"
-            if i in sort_map:
-                rank, rev = sort_map[i]
-                indicator = "▼" if rev else "▲"
-                suffix = f" {indicator}{rank + 1}" if multi else f" {indicator}"
-                label = col + suffix
-            else:
-                label = col
-            self.add_column(label, key=key)
+            self.add_column(self._build_column_label_text(col, i), key=key)
 
         for i, resource in enumerate(resources):
             row_key = f"row-{i}"
