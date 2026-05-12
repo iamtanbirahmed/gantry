@@ -1,6 +1,7 @@
 """Custom widgets for Gantry TUI."""
 
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Callable, Tuple
 from textual.widgets import DataTable, Static, Input
 from textual.containers import Container, Horizontal, Vertical
@@ -105,6 +106,26 @@ class ResourceTable(DataTable):
             return col_name + suffix
         return col_name
 
+    def _coerce_sort_value(self, value: Any) -> tuple:
+        """Return a (type_tag, coerced_value) tuple for type-aware, cross-type-safe sorting.
+
+        Ordering: numbers (0) < datetimes (1) < strings (2).
+        Ensures no TypeError when a column contains mixed types.
+        """
+        if value is None:
+            return (2, "")
+        s = str(value).strip()
+        if not s:
+            return (2, "")
+        try:
+            return (0, float(s))
+        except (ValueError, TypeError):
+            pass
+        try:
+            return (1, datetime.fromisoformat(s.replace("Z", "+00:00")))
+        except (ValueError, TypeError):
+            return (2, s.lower())
+
     def _update_column_labels(self) -> None:
         """Rewrite column header labels in-place to show sort indicators."""
         for col_key_obj, column in self.columns.items():
@@ -152,7 +173,7 @@ class ResourceTable(DataTable):
 
         for i, resource in enumerate(resources):
             row_key = f"row-{i}"
-            row_values = [str(resource.get(k, "")) for k in column_keys]
+            row_values = [resource.get(k, "") for k in column_keys]
             self._all_rows[row_key] = row_values
 
         self._apply_filter(self._search_term)
@@ -177,9 +198,9 @@ class ResourceTable(DataTable):
         # Stable sort: apply from least to most significant column
         for col_idx, reverse in reversed(self._sort_columns):
             sorted_items.sort(
-                key=lambda item, c=col_idx: str(item[1][c]).lower()
+                key=lambda item, c=col_idx: self._coerce_sort_value(item[1][c])
                 if c < len(item[1])
-                else "",
+                else (2, ""),
                 reverse=reverse,
             )
         return sorted_items
@@ -198,7 +219,7 @@ class ResourceTable(DataTable):
             ]
 
         for row_key, row_values in self._sort_items(visible_items):
-            self.add_row(*row_values, key=row_key)
+            self.add_row(*[str(v) for v in row_values], key=row_key)
 
     def on_data_table_row_selected(self, event) -> None:
         """Handle row selection."""
