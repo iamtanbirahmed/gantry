@@ -1,7 +1,7 @@
 """Custom widgets for Gantry TUI."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Callable, Tuple
 from rich.text import Text
 from textual.widgets import DataTable, Static, Input
@@ -132,7 +132,12 @@ class ResourceTable(DataTable):
         except ValueError:
             pass
         try:
-            return (1, datetime.fromisoformat(s.replace("Z", "+00:00")))
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            else:
+                dt = dt.astimezone(timezone.utc)
+            return (1, dt.timestamp())
         except ValueError:
             return (2, s.lower())
 
