@@ -92,6 +92,7 @@ class ResourceTable(DataTable):
             return
         col_idx = self._column_keys.index(col_key_str)
         self._compute_next_sort(col_idx, self._shift_held)
+        self._shift_held = False
         self._update_column_labels()
         self._apply_filter(self._search_term)
 
