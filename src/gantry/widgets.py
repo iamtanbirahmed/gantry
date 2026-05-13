@@ -55,7 +55,7 @@ class ResourceTable(DataTable):
         """Record shift state before header click fires."""
         self._shift_held = event.shift
 
-    def on_data_table_header_selected(self, event) -> None:
+    def on_data_table_header_selected(self, event: DataTable.HeaderSelected) -> None:
         """Handle column header click to update sort order."""
         ck = event.column_key
         col_key_str = str(getattr(ck, "value", ck))
@@ -114,7 +114,7 @@ class ResourceTable(DataTable):
             if i >= len(self._columns):
                 continue
             column.label = Text(self._build_column_label_text(self._columns[i], i))
-        self.refresh()
+            self.refresh_column(i)
 
     def _coerce_sort_value(self, value: Any) -> Any:
         """Return a type-aware comparable value for stable multi-type sorting."""
