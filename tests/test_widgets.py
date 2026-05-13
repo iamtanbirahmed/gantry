@@ -138,6 +138,15 @@ def test_compute_next_sort_shift_toggles_existing():
     assert table._sort_columns == [(0, False), (1, True)]
 
 
+def test_compute_next_sort_primary_toggle_preserves_secondary():
+    """Clicking the primary column toggles its direction even when secondary sorts exist."""
+    table = ResourceTable()
+    table._sort_columns = [(0, False), (1, False)]
+    table._compute_next_sort(0, False)
+    # Primary direction toggled, secondary preserved
+    assert table._sort_columns == [(0, True), (1, False)]
+
+
 def test_compute_next_sort_max_three_columns():
     """Adding a 4th column via Shift-click drops the least significant (last) one."""
     table = ResourceTable()

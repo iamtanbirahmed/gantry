@@ -83,12 +83,11 @@ class ResourceTable(DataTable):
                     # Drop least-significant key to preserve primary sort intent
                     self._sort_columns.pop()
                 self._sort_columns.append((col_idx, False))
+        elif existing_pos == 0:
+            idx, rev = self._sort_columns[0]
+            self._sort_columns[0] = (idx, not rev)
         else:
-            if existing_pos == 0 and len(self._sort_columns) == 1:
-                idx, rev = self._sort_columns[0]
-                self._sort_columns = [(idx, not rev)]
-            else:
-                self._sort_columns = [(col_idx, False)]
+            self._sort_columns = [(col_idx, False)]
 
     def _build_column_label_text(self, col_name: str, col_idx: int) -> str:
         """Return column label with sort indicator appended if applicable."""
