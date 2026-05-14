@@ -65,8 +65,8 @@ class ResourceTable(DataTable):
         col_idx = self._column_keys.index(col_key_str)
         self._compute_next_sort(col_idx, self._shift_held)
         self._shift_held = False
-        self._update_column_labels()
         self._apply_filter(self._search_term)
+        self._update_column_labels()
 
     def _compute_next_sort(self, col_idx: int, shift: bool) -> None:
         """Update _sort_columns based on which column was clicked and whether Shift was held."""
@@ -113,7 +113,8 @@ class ResourceTable(DataTable):
             if i >= len(self._columns):
                 continue
             column.label = Text(self._build_column_label_text(self._columns[i], i))
-            self.refresh_column(i)
+        self._require_update_dimensions = True
+        self.refresh()
 
     def _coerce_sort_value(self, value: Any) -> Any:
         """Return a type-aware comparable value for stable multi-type sorting."""
