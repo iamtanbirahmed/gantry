@@ -2,7 +2,9 @@
 
 import logging
 import os
-from typing import Any, Dict, List, Optional
+import re
+import time
+from typing import Any, Callable, Dict, List, Optional
 
 import yaml
 
@@ -150,6 +152,8 @@ def list_pods(namespace: str = "default", context: Optional[str] = None) -> List
                     if pod.metadata.creation_timestamp
                     else None
                 ),
+                "_labels": pod.metadata.labels or {},
+                "_annotations": pod.metadata.annotations or {},
             })
         logger.debug(f"list_pods returned {len(result)} pods for namespace={namespace}")
         return result
@@ -205,6 +209,8 @@ def list_services(namespace: str = "default", context: Optional[str] = None) -> 
                 "cluster_ip": svc.spec.cluster_ip,
                 "external_ips": svc.spec.external_i_ps or [],
                 "ports": ports,
+                "_labels": svc.metadata.labels or {},
+                "_annotations": svc.metadata.annotations or {},
             })
         logger.debug(f"list_services returned {len(result)} services for namespace={namespace}")
         return result
@@ -251,6 +257,8 @@ def list_deployments(namespace: str = "default", context: Optional[str] = None) 
                 "updated_replicas": deploy.status.updated_replicas or 0,
                 "available_replicas": deploy.status.available_replicas or 0,
                 "strategy_type": deploy.spec.strategy.type if deploy.spec.strategy else None,
+                "_labels": deploy.metadata.labels or {},
+                "_annotations": deploy.metadata.annotations or {},
             })
         logger.debug(f"list_deployments returned {len(result)} deployments for namespace={namespace}")
         return result
@@ -295,6 +303,8 @@ def list_configmaps(namespace: str = "default", context: Optional[str] = None) -
                 "namespace": cm.metadata.namespace,
                 "keys": data_keys,
                 "key_count": len(data_keys),
+                "_labels": cm.metadata.labels or {},
+                "_annotations": cm.metadata.annotations or {},
             })
         logger.debug(f"list_configmaps returned {len(result)} configmaps for namespace={namespace}")
         return result
@@ -331,6 +341,8 @@ def list_replicasets(namespace: str = "default", context: Optional[str] = None) 
                 "desired": rs.spec.replicas or 0,
                 "ready": rs.status.ready_replicas or 0,
                 "available": rs.status.available_replicas or 0,
+                "_labels": rs.metadata.labels or {},
+                "_annotations": rs.metadata.annotations or {},
             })
         logger.debug(f"list_replicasets returned {len(result)} replicasets for namespace={namespace}")
         return result
@@ -366,6 +378,8 @@ def list_statefulsets(namespace: str = "default", context: Optional[str] = None)
                 "namespace": ss.metadata.namespace,
                 "ready": f"{ss.status.ready_replicas or 0}/{ss.spec.replicas or 0}",
                 "age": ss.metadata.creation_timestamp.isoformat() if ss.metadata.creation_timestamp else "",
+                "_labels": ss.metadata.labels or {},
+                "_annotations": ss.metadata.annotations or {},
             })
         logger.debug(f"list_statefulsets returned {len(result)} statefulsets for namespace={namespace}")
         return result
@@ -402,6 +416,8 @@ def list_daemonsets(namespace: str = "default", context: Optional[str] = None) -
                 "desired": ds.status.desired_number_scheduled or 0,
                 "ready": ds.status.number_ready or 0,
                 "node_selector": str(ds.spec.template.spec.node_selector or {}),
+                "_labels": ds.metadata.labels or {},
+                "_annotations": ds.metadata.annotations or {},
             })
         logger.debug(f"list_daemonsets returned {len(result)} daemonsets for namespace={namespace}")
         return result
@@ -450,6 +466,8 @@ def list_jobs(namespace: str = "default", context: Optional[str] = None) -> List
                 "completions": f"{succeeded}/{completions}",
                 "duration": str(job.status.completion_time - job.status.start_time) if (job.status.completion_time and job.status.start_time) else "N/A",
                 "status": job_status,
+                "_labels": job.metadata.labels or {},
+                "_annotations": job.metadata.annotations or {},
             })
         logger.debug(f"list_jobs returned {len(result)} jobs for namespace={namespace}")
         return result
@@ -486,6 +504,8 @@ def list_cronjobs(namespace: str = "default", context: Optional[str] = None) -> 
                 "schedule": cj.spec.schedule,
                 "last_run": cj.status.last_schedule_time.isoformat() if cj.status.last_schedule_time else "Never",
                 "active": len(cj.status.active or []),
+                "_labels": cj.metadata.labels or {},
+                "_annotations": cj.metadata.annotations or {},
             })
         logger.debug(f"list_cronjobs returned {len(result)} cronjobs for namespace={namespace}")
         return result
@@ -531,6 +551,8 @@ def list_ingresses(namespace: str = "default", context: Optional[str] = None) ->
                 "class": ingress_class,
                 "hosts": hosts,
                 "address": address,
+                "_labels": ing.metadata.labels or {},
+                "_annotations": ing.metadata.annotations or {},
             })
         logger.debug(f"list_ingresses returned {len(result)} ingresses for namespace={namespace}")
         return result
@@ -565,6 +587,8 @@ def list_endpoints(namespace: str = "default", context: Optional[str] = None) ->
                 "name": ep.metadata.name,
                 "namespace": ep.metadata.namespace,
                 "endpoints": str(len(ep.subsets or [])),
+                "_labels": ep.metadata.labels or {},
+                "_annotations": ep.metadata.annotations or {},
             })
         logger.debug(f"list_endpoints returned {len(result)} endpoints for namespace={namespace}")
         return result
@@ -600,6 +624,8 @@ def list_secrets(namespace: str = "default", context: Optional[str] = None) -> L
                 "namespace": secret.metadata.namespace,
                 "type": secret.type or "",
                 "keys": len(secret.data or {}),
+                "_labels": secret.metadata.labels or {},
+                "_annotations": secret.metadata.annotations or {},
             })
         logger.debug(f"list_secrets returned {len(result)} secrets for namespace={namespace}")
         return result
@@ -639,6 +665,8 @@ def list_persistentvolumeclaims(namespace: str = "default", context: Optional[st
                 "status": pvc.status.phase or "",
                 "volume": pvc.spec.volume_name or "",
                 "capacity": capacity,
+                "_labels": pvc.metadata.labels or {},
+                "_annotations": pvc.metadata.annotations or {},
             })
         logger.debug(f"list_persistentvolumeclaims returned {len(result)} pvcs for namespace={namespace}")
         return result
@@ -674,6 +702,8 @@ def list_persistentvolumes(context: Optional[str] = None) -> List[Dict[str, Any]
                 "capacity": capacity,
                 "access_modes": ",".join(pv.spec.access_modes or []),
                 "status": pv.status.phase or "",
+                "_labels": pv.metadata.labels or {},
+                "_annotations": pv.metadata.annotations or {},
             })
         logger.debug(f"list_persistentvolumes returned {len(result)} pvs")
         return result
@@ -705,6 +735,8 @@ def list_namespace_resources(context: Optional[str] = None) -> List[Dict[str, An
                 "namespace": "",
                 "status": ns.status.phase or "",
                 "age": ns.metadata.creation_timestamp.isoformat() if ns.metadata.creation_timestamp else "",
+                "_labels": ns.metadata.labels or {},
+                "_annotations": ns.metadata.annotations or {},
             })
         logger.debug(f"list_namespace_resources returned {len(result)} namespaces")
         return result
@@ -749,6 +781,8 @@ def list_nodes(context: Optional[str] = None) -> List[Dict[str, Any]]:
                 "status": node_status,
                 "roles": roles or "none",
                 "version": version,
+                "_labels": node.metadata.labels or {},
+                "_annotations": node.metadata.annotations or {},
             })
         logger.debug(f"list_nodes returned {len(result)} nodes")
         return result
@@ -1152,3 +1186,131 @@ def get_pod_logs(
     except Exception as e:
         logger.error(f"Error in get_pod_logs: {e}", exc_info=True)
         return f"Error: {str(e)}"
+
+
+def _parse_duration(duration_str: str) -> Optional[int]:
+    """Parse a duration string into seconds. Supports '1h', '1h30m', '90s', '90' (bare int = seconds)."""
+    units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+    s = duration_str.strip().lower()
+    if s.isdigit():
+        return int(s)
+    total = 0
+    matched = False
+    for m in re.finditer(r"(\d+(?:\.\d+)?)([smhd])", s):
+        matched = True
+        total += int(float(m.group(1)) * units[m.group(2)])
+    if not matched:
+        return None
+    # Reject if there's non-whitespace left over after removing all valid segments
+    leftover = re.sub(r"\d+(?:\.\d+)?[smhd]", "", s).strip()
+    if leftover:
+        return None
+    return total
+
+
+def _make_filter_predicate(term: str) -> Callable[[Dict[str, Any]], bool]:
+    """Parse a single filter term into a predicate function."""
+    term = term.strip()
+    if not term:
+        return lambda r: True
+
+    if ":" in term:
+        field, _, value = term.partition(":")
+        field = field.strip().lower()
+        value = value.strip()
+
+        if field == "label":
+            if "=" in value:
+                lk, _, lv = value.partition("=")
+                return lambda r, k=lk, v=lv: r.get("_labels", {}).get(k) == v
+            return lambda r, k=value: k in r.get("_labels", {})
+
+        if field == "annotation":
+            if "=" in value:
+                ak, _, av = value.partition("=")
+                return lambda r, k=ak, v=av: r.get("_annotations", {}).get(k) == v
+            return lambda r, k=value: k in r.get("_annotations", {})
+
+        if field == "status":
+            return lambda r, v=value: str(r.get("status", "")).lower() == v.lower()
+
+        if field == "namespace":
+            return lambda r, v=value: v.lower() in str(r.get("namespace", "")).lower()
+
+        if field == "name":
+            if value.startswith("/") and value.endswith("/") and len(value) > 2:
+                try:
+                    pattern = re.compile(value[1:-1], re.IGNORECASE)
+                    return lambda r, p=pattern: bool(p.search(str(r.get("name", ""))))
+                except re.error:
+                    pass
+            return lambda r, v=value: v.lower() in str(r.get("name", "")).lower()
+
+        if field == "age":
+            now = time.time()
+            if value and value[0] in ("<", ">"):
+                op = value[0]
+                secs = _parse_duration(value[1:])
+                if secs is not None:
+                    cutoff = now - secs
+                    if op == "<":
+                        return lambda r, c=cutoff: (r.get("age_seconds") or 0) > c
+                    return lambda r, c=cutoff: (r.get("age_seconds") or 0) < c
+            # Malformed age expression — don't match anything.
+            return lambda r: False
+        # Unknown field — don't match anything.
+        return lambda r: False
+
+    # No colon: regex if wrapped in /…/, otherwise substring across all string fields
+    if term.startswith("/") and term.endswith("/") and len(term) > 2:
+        try:
+            pattern = re.compile(term[1:-1], re.IGNORECASE)
+            return lambda r, p=pattern: any(
+                bool(p.search(str(v)))
+                for k, v in r.items()
+                if not k.startswith("_") and isinstance(v, str)
+            )
+        except re.error:
+            pass
+
+    return lambda r, t=term.lower(): any(
+        t in str(v).lower()
+        for k, v in r.items()
+        if not k.startswith("_") and isinstance(v, str)
+    )
+
+
+def filter_resources(resources: List[Dict[str, Any]], filter_expr: str) -> List[Dict[str, Any]]:
+    """
+    Filter resources by an expression string.
+
+    Syntax:
+        name:nginx            substring match on name
+        name:/nginx.*/        regex match on name
+        status:Running        exact status match (case-insensitive)
+        label:app=web         label key=value match
+        label:app             label key present
+        annotation:key=val    annotation match
+        namespace:kube-system namespace substring match
+        age:<1h               younger than 1 hour (s/m/h/d units)
+        age:>2d               older than 2 days
+        /pattern/             regex across all string fields
+
+    Combine terms with AND / OR (case-insensitive). AND binds tighter than OR.
+    Example: label:app=web AND status=Running OR name:nginx
+    """
+    if not filter_expr or not filter_expr.strip():
+        return resources
+
+    or_groups = re.split(r"\s+OR\s+", filter_expr, flags=re.IGNORECASE)
+    or_predicates: List[Callable[[Dict[str, Any]], bool]] = []
+    for group in or_groups:
+        and_terms = re.split(r"\s+AND\s+", group, flags=re.IGNORECASE)
+        preds = [_make_filter_predicate(t) for t in and_terms if t.strip()]
+        if preds:
+            or_predicates.append(lambda r, ps=preds: all(p(r) for p in ps))
+
+    if not or_predicates:
+        return resources
+
+    return [r for r in resources if any(p(r) for p in or_predicates)]

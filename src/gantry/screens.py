@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, ClassVar, Dict, List, Optional, Tuple
 from textual.screen import Screen, ModalScreen
 from textual.containers import Container, Vertical, Horizontal, ScrollableContainer, VerticalScroll
 from textual.widgets import Label, Static, Button, OptionList, Input, TextArea, ListView, ListItem, DirectoryTree
@@ -16,7 +16,7 @@ from textual.css.query import NoMatches
 import json
 
 from gantry import k8s, state
-from gantry.widgets import ResourceTable, SearchInput, StatusBar, KeybindingsBar
+from gantry.widgets import ResourceTable, SearchInput, StatusBar, KeybindingsBar, FilterPanel
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +198,7 @@ class ClusterScreen(Screen):
         ("escape", "close_detail_panel", "Close Panel"),
         ("tab", "app.action_switch_screen", "Switch to Helm View"),
         Binding("slash", "focus_search", "Search", priority=True),
+        Binding("f", "focus_filter", "Filter", priority=True),
         ("c", "show_context_picker", "Pick Context"),
         ("d", "describe_resource", "Describe"),
         ("y", "show_yaml", "YAML"),
@@ -320,6 +321,105 @@ class ClusterScreen(Screen):
         "Nodes": "node",
     }
 
+    # Maps resource_type -> {"all": (columns, keys), "single": (columns, keys)}
+    # Used by both _display_resources and _get_columns_and_keys to avoid duplication.
+    RESOURCE_COLUMNS: ClassVar[Dict[str, Dict[str, Tuple[List[str], List[str]]]]] = {
+        "Pods": {
+            "all": (["Name", "Namespace", "Status", "Ready", "Restarts"],
+                    ["name", "namespace", "status", "ready", "restarts"]),
+            "single": (["Name", "Status", "Ready", "Restarts"],
+                       ["name", "status", "ready", "restarts"]),
+        },
+        "Deployments": {
+            "all": (["Name", "Namespace", "Replicas", "Ready", "Available"],
+                    ["name", "namespace", "replicas", "ready_replicas", "available_replicas"]),
+            "single": (["Name", "Replicas", "Ready", "Available"],
+                       ["name", "replicas", "ready_replicas", "available_replicas"]),
+        },
+        "ReplicaSets": {
+            "all": (["Name", "Namespace", "Desired", "Ready", "Available"],
+                    ["name", "namespace", "desired", "ready", "available"]),
+            "single": (["Name", "Desired", "Ready", "Available"],
+                       ["name", "desired", "ready", "available"]),
+        },
+        "StatefulSets": {
+            "all": (["Name", "Namespace", "Ready", "Age"],
+                    ["name", "namespace", "ready", "age"]),
+            "single": (["Name", "Ready", "Age"],
+                       ["name", "ready", "age"]),
+        },
+        "DaemonSets": {
+            "all": (["Name", "Namespace", "Desired", "Ready", "Node Selector"],
+                    ["name", "namespace", "desired", "ready", "node_selector"]),
+            "single": (["Name", "Desired", "Ready", "Node Selector"],
+                       ["name", "desired", "ready", "node_selector"]),
+        },
+        "Jobs": {
+            "all": (["Name", "Namespace", "Completions", "Duration", "Status"],
+                    ["name", "namespace", "completions", "duration", "status"]),
+            "single": (["Name", "Completions", "Duration", "Status"],
+                       ["name", "completions", "duration", "status"]),
+        },
+        "CronJobs": {
+            "all": (["Name", "Namespace", "Schedule", "Last Run", "Active"],
+                    ["name", "namespace", "schedule", "last_run", "active"]),
+            "single": (["Name", "Schedule", "Last Run", "Active"],
+                       ["name", "schedule", "last_run", "active"]),
+        },
+        "Services": {
+            "all": (["Name", "Namespace", "Type", "Cluster IP"],
+                    ["name", "namespace", "type", "cluster_ip"]),
+            "single": (["Name", "Type", "Cluster IP"],
+                       ["name", "type", "cluster_ip"]),
+        },
+        "Ingresses": {
+            "all": (["Name", "Namespace", "Class", "Hosts", "Address"],
+                    ["name", "namespace", "class", "hosts", "address"]),
+            "single": (["Name", "Class", "Hosts", "Address"],
+                       ["name", "class", "hosts", "address"]),
+        },
+        "Endpoints": {
+            "all": (["Name", "Namespace", "Endpoints"],
+                    ["name", "namespace", "endpoints"]),
+            "single": (["Name", "Endpoints"],
+                       ["name", "endpoints"]),
+        },
+        "ConfigMaps": {
+            "all": (["Name", "Namespace", "Keys"],
+                    ["name", "namespace", "key_count"]),
+            "single": (["Name", "Keys"],
+                       ["name", "key_count"]),
+        },
+        "Secrets": {
+            "all": (["Name", "Namespace", "Type", "Keys"],
+                    ["name", "namespace", "type", "keys"]),
+            "single": (["Name", "Type", "Keys"],
+                       ["name", "type", "keys"]),
+        },
+        "PersistentVolumeClaims": {
+            "all": (["Name", "Namespace", "Status", "Volume", "Capacity"],
+                    ["name", "namespace", "status", "volume", "capacity"]),
+            "single": (["Name", "Status", "Volume", "Capacity"],
+                       ["name", "status", "volume", "capacity"]),
+        },
+        "PersistentVolumes": {
+            "all": (["Name", "Capacity", "Access Modes", "Status"],
+                    ["name", "capacity", "access_modes", "status"]),
+            "single": (["Name", "Capacity", "Access Modes", "Status"],
+                       ["name", "capacity", "access_modes", "status"]),
+        },
+        "Namespaces": {
+            "all": (["Name", "Status", "Age"], ["name", "status", "age"]),
+            "single": (["Name", "Status", "Age"], ["name", "status", "age"]),
+        },
+        "Nodes": {
+            "all": (["Name", "Status", "Roles", "Version"],
+                    ["name", "status", "roles", "version"]),
+            "single": (["Name", "Status", "Roles", "Version"],
+                       ["name", "status", "roles", "version"]),
+        },
+    }
+
     current_resource_type = reactive("Pods", init=False)
     current_namespace = reactive("default")
     current_context = reactive("N/A")
@@ -343,6 +443,10 @@ class ClusterScreen(Screen):
         self._yaml_full: str = ""
         self._yaml_spec: str = ""
         self._yaml_text_area: Optional[TextArea] = None
+        self._active_filter: str = ""
+        # _raw_resources stores all fetched resources for re-filtering;
+        # _resource_data stores what's currently displayed (matches table rows).
+        self._raw_resources: List[Dict[str, Any]] = []
 
     def compose(self):
         """Compose the cluster screen."""
@@ -371,6 +475,7 @@ class ClusterScreen(Screen):
             with Vertical(id="content-area"):
                 yield ResourceTable(id="resource-table")
                 yield SearchInput(id="search-input")
+                yield FilterPanel(id="filter-panel")
 
             # Detail panel for descriptions and logs (right sidebar)
             with VerticalScroll(id="detail-panel"):
@@ -543,112 +648,16 @@ class ClusterScreen(Screen):
         # Check if we're in all-namespace mode
         is_all_namespaces = namespace == "all"
 
-        if resource_type == "Pods":
-            if is_all_namespaces:
-                columns = ["Name", "Namespace", "Status", "Ready", "Restarts"]
-                keys = ["name", "namespace", "status", "ready", "restarts"]
-            else:
-                columns = ["Name", "Status", "Ready", "Restarts"]
-                keys = ["name", "status", "ready", "restarts"]
-        elif resource_type == "Deployments":
-            if is_all_namespaces:
-                columns = ["Name", "Namespace", "Replicas", "Ready", "Available"]
-                keys = ["name", "namespace", "replicas", "ready_replicas", "available_replicas"]
-            else:
-                columns = ["Name", "Replicas", "Ready", "Available"]
-                keys = ["name", "replicas", "ready_replicas", "available_replicas"]
-        elif resource_type == "ReplicaSets":
-            if is_all_namespaces:
-                columns = ["Name", "Namespace", "Desired", "Ready", "Available"]
-                keys = ["name", "namespace", "desired", "ready", "available"]
-            else:
-                columns = ["Name", "Desired", "Ready", "Available"]
-                keys = ["name", "desired", "ready", "available"]
-        elif resource_type == "StatefulSets":
-            if is_all_namespaces:
-                columns = ["Name", "Namespace", "Ready", "Age"]
-                keys = ["name", "namespace", "ready", "age"]
-            else:
-                columns = ["Name", "Ready", "Age"]
-                keys = ["name", "ready", "age"]
-        elif resource_type == "DaemonSets":
-            if is_all_namespaces:
-                columns = ["Name", "Namespace", "Desired", "Ready", "Node Selector"]
-                keys = ["name", "namespace", "desired", "ready", "node_selector"]
-            else:
-                columns = ["Name", "Desired", "Ready", "Node Selector"]
-                keys = ["name", "desired", "ready", "node_selector"]
-        elif resource_type == "Jobs":
-            if is_all_namespaces:
-                columns = ["Name", "Namespace", "Completions", "Duration", "Status"]
-                keys = ["name", "namespace", "completions", "duration", "status"]
-            else:
-                columns = ["Name", "Completions", "Duration", "Status"]
-                keys = ["name", "completions", "duration", "status"]
-        elif resource_type == "CronJobs":
-            if is_all_namespaces:
-                columns = ["Name", "Namespace", "Schedule", "Last Run", "Active"]
-                keys = ["name", "namespace", "schedule", "last_run", "active"]
-            else:
-                columns = ["Name", "Schedule", "Last Run", "Active"]
-                keys = ["name", "schedule", "last_run", "active"]
-        elif resource_type == "Services":
-            if is_all_namespaces:
-                columns = ["Name", "Namespace", "Type", "Cluster IP"]
-                keys = ["name", "namespace", "type", "cluster_ip"]
-            else:
-                columns = ["Name", "Type", "Cluster IP"]
-                keys = ["name", "type", "cluster_ip"]
-        elif resource_type == "Ingresses":
-            if is_all_namespaces:
-                columns = ["Name", "Namespace", "Class", "Hosts", "Address"]
-                keys = ["name", "namespace", "class", "hosts", "address"]
-            else:
-                columns = ["Name", "Class", "Hosts", "Address"]
-                keys = ["name", "class", "hosts", "address"]
-        elif resource_type == "Endpoints":
-            if is_all_namespaces:
-                columns = ["Name", "Namespace", "Endpoints"]
-                keys = ["name", "namespace", "endpoints"]
-            else:
-                columns = ["Name", "Endpoints"]
-                keys = ["name", "endpoints"]
-        elif resource_type == "ConfigMaps":
-            if is_all_namespaces:
-                columns = ["Name", "Namespace", "Keys"]
-                keys = ["name", "namespace", "key_count"]
-            else:
-                columns = ["Name", "Keys"]
-                keys = ["name", "key_count"]
-        elif resource_type == "Secrets":
-            if is_all_namespaces:
-                columns = ["Name", "Namespace", "Type", "Keys"]
-                keys = ["name", "namespace", "type", "keys"]
-            else:
-                columns = ["Name", "Type", "Keys"]
-                keys = ["name", "type", "keys"]
-        elif resource_type == "PersistentVolumeClaims":
-            if is_all_namespaces:
-                columns = ["Name", "Namespace", "Status", "Volume", "Capacity"]
-                keys = ["name", "namespace", "status", "volume", "capacity"]
-            else:
-                columns = ["Name", "Status", "Volume", "Capacity"]
-                keys = ["name", "status", "volume", "capacity"]
-        elif resource_type == "PersistentVolumes":
-            columns = ["Name", "Capacity", "Access Modes", "Status"]
-            keys = ["name", "capacity", "access_modes", "status"]
-        elif resource_type == "Namespaces":
-            columns = ["Name", "Status", "Age"]
-            keys = ["name", "status", "age"]
-        elif resource_type == "Nodes":
-            columns = ["Name", "Status", "Roles", "Version"]
-            keys = ["name", "status", "roles", "version"]
-        else:
+        columns, keys = self._get_columns_and_keys(resource_type, is_all_namespaces)
+        if not columns:
             return
 
-        table.populate_resources(resources, columns, keys)
-        # Store resource data for actions like describe and logs
-        self._resource_data = resources
+        # Store raw resources for re-filtering when the expression changes.
+        self._raw_resources = resources
+        display_resources = k8s.filter_resources(resources, self._active_filter) if self._active_filter else resources
+        # _resource_data tracks what the table currently shows so cursor_row maps correctly.
+        self._resource_data = display_resources
+        table.populate_resources(display_resources, columns, keys)
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         """Handle sidebar up/down navigation - immediately update resource type.
@@ -665,6 +674,54 @@ class ClusterScreen(Screen):
         search_input.add_class("show")
         search_input.focus()
         self.search_active = True
+
+    def action_focus_filter(self) -> None:
+        """Show and focus the advanced filter panel."""
+        filter_panel: FilterPanel = self.query_one("#filter-panel", FilterPanel)
+        filter_panel.add_class("show")
+        self.current_panel = "filter"
+        try:
+            inp = filter_panel.query_one("#filter-expr-input", Input)
+            inp.focus()
+        except NoMatches:
+            filter_panel.focus()
+
+    def on_filter_panel_filter_dismissed(self, event: FilterPanel.FilterDismissed) -> None:
+        """Reset panel focus when filter panel is dismissed."""
+        self.current_panel = "table"
+
+    def on_filter_panel_filter_changed(self, event: FilterPanel.FilterChanged) -> None:
+        """Apply the filter expression to the current resource data."""
+        self._active_filter = event.filter_expr
+        self._apply_active_filter()
+
+    def _apply_active_filter(self) -> None:
+        """Filter _raw_resources by _active_filter and repopulate the table."""
+        filtered = k8s.filter_resources(self._raw_resources, self._active_filter)
+        self._resource_data = filtered
+        try:
+            table: ResourceTable = self.query_one("#resource-table", ResourceTable)
+        except NoMatches:
+            return
+        columns, keys = self._get_columns_and_keys()
+        if columns:
+            table.populate_resources(filtered, columns, keys)
+
+    def _get_columns_and_keys(
+        self,
+        resource_type: Optional[str] = None,
+        is_all: Optional[bool] = None,
+    ) -> Tuple[List[str], List[str]]:
+        """Return (columns, keys) for the given or current resource type and namespace mode."""
+        if resource_type is None:
+            resource_type = self.current_resource_type
+        if is_all is None:
+            is_all = self.current_namespace == "all"
+        entry = self.RESOURCE_COLUMNS.get(resource_type)
+        if entry is None:
+            return ([], [])
+        variant = "all" if is_all else "single"
+        return entry[variant]
 
     def action_describe_resource(self) -> None:
         """Describe the selected resource."""
@@ -1081,6 +1138,13 @@ class ClusterScreen(Screen):
 
     def watch_current_resource_type(self, new_type: str) -> None:
         """React to resource type changes."""
+        if self._active_filter:
+            self._active_filter = ""
+            try:
+                fp = self.query_one("#filter-panel", FilterPanel)
+                fp.query_one("#filter-expr-input", Input).value = ""
+            except NoMatches:
+                pass
         self._refresh_resources()
 
     def watch_current_panel(self, new_panel: str) -> None:
