@@ -12,6 +12,7 @@ dependencies = [
     "textual[syntax]>=0.40.0",
     "kubernetes>=28.0.0",
     "pyyaml>=6.0",
+    "rich>=13.0.0",
 ]
 
 [tool.hatch.build.targets.wheel]

@@ -1,11 +1,13 @@
 """Custom widgets for Gantry TUI."""
 
 import logging
-from typing import Any, Dict, List, Optional, Callable
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Callable, Tuple
+from rich.text import Text
 from textual.widgets import DataTable, Static, Input
 from textual.containers import Container, Horizontal, Vertical
 from textual.message import Message
-from textual.events import Key
+from textual.events import Key, MouseDown
 from textual.css.query import NoMatches
 
 logger = logging.getLogger(__name__)
@@ -45,6 +47,110 @@ class ResourceTable(DataTable):
         self._all_rows: Dict[str, List[Any]] = {}
         self._search_term: str = ""
         self._columns: List[str] = []
+        self._column_keys: List[str] = []
+        self._sort_columns: List[Tuple[int, bool]] = []  # (col_idx, reverse)
+        self._shift_held: bool = False
+
+    def on_mouse_down(self, event: MouseDown) -> None:
+        """Record shift state before header click fires."""
+        self._shift_held = event.shift
+
+    def on_data_table_header_selected(self, event: DataTable.HeaderSelected) -> None:
+        """Handle column header click to update sort order."""
+        ck = event.column_key
+        col_key_str = str(getattr(ck, "value", ck))
+        if col_key_str not in self._column_keys:
+            self._shift_held = False
+            return
+        col_idx = self._column_keys.index(col_key_str)
+        self._compute_next_sort(col_idx, self._shift_held)
+        self._shift_held = False
+        self._apply_filter(self._search_term)
+        self._update_column_labels()
+
+    def _compute_next_sort(self, col_idx: int, shift: bool) -> None:
+        """Update _sort_columns based on which column was clicked and whether Shift was held."""
+        existing_pos = next(
+            (i for i, (idx, _) in enumerate(self._sort_columns) if idx == col_idx),
+            None,
+        )
+        if shift:
+            if existing_pos is not None:
+                idx, rev = self._sort_columns[existing_pos]
+                self._sort_columns[existing_pos] = (idx, not rev)
+            else:
+                if len(self._sort_columns) >= 3:
+                    # Drop least-significant key to preserve primary sort intent
+                    self._sort_columns.pop()
+                self._sort_columns.append((col_idx, False))
+        elif existing_pos == 0:
+            idx, rev = self._sort_columns[0]
+            self._sort_columns[0] = (idx, not rev)
+        else:
+            self._sort_columns = [(col_idx, False)]
+
+    def _build_column_label_text(self, col_name: str, col_idx: int) -> str:
+        """Return column label with sort indicator appended if applicable."""
+        sort_map = {idx: (rank, rev) for rank, (idx, rev) in enumerate(self._sort_columns)}
+        multi = len(self._sort_columns) > 1
+        if col_idx in sort_map:
+            rank, rev = sort_map[col_idx]
+            indicator = "▼" if rev else "▲"
+            suffix = f" {indicator}{rank + 1}" if multi else f" {indicator}"
+            return col_name + suffix
+        return col_name
+
+    def _update_column_labels(self) -> None:
+        """Rewrite column header labels in-place to show current sort indicators."""
+        for col_key_obj, column in self.columns.items():
+            key_str = str(getattr(col_key_obj, "value", col_key_obj))
+            if not key_str.startswith("col_"):
+                continue
+            try:
+                i = int(key_str.split("_")[1])
+            except (ValueError, IndexError):
+                continue
+            if i >= len(self._columns):
+                continue
+            column.label = Text(self._build_column_label_text(self._columns[i], i))
+        self._require_update_dimensions = True
+        self.refresh()
+
+    def _coerce_sort_value(self, value: Any) -> Any:
+        """Return a type-aware comparable value for stable multi-type sorting."""
+        if value is None:
+            return (2, "")
+        s = str(value).strip()
+        if s == "":
+            return (2, "")
+        try:
+            return (0, int(s))
+        except ValueError:
+            pass
+        try:
+            return (0, float(s))
+        except ValueError:
+            pass
+        try:
+            dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            else:
+                dt = dt.astimezone(timezone.utc)
+            return (1, dt.timestamp())
+        except ValueError:
+            return (2, s.lower())
+
+    def _sort_items(self, items: List[Tuple[str, List[Any]]]) -> List[Tuple[str, List[Any]]]:
+        """Stable multi-key sort of (row_key, row_values) pairs by _sort_columns."""
+        for col_idx, reverse in reversed(self._sort_columns):
+            items.sort(
+                key=lambda item, c=col_idx: (
+                    self._coerce_sort_value(item[1][c]) if c < len(item[1]) else (2, "")
+                ),
+                reverse=reverse,
+            )
+        return items
 
     def populate_resources(
         self,
@@ -60,24 +166,25 @@ class ResourceTable(DataTable):
             columns: List of column headers to display.
             column_keys: List of keys to extract from each resource dict.
         """
+        columns_changed = columns != self._columns
+        if columns_changed:
+            self._sort_columns = []
+
         self.clear(columns=True)
         self._all_rows.clear()
         self._columns = columns
+        self._column_keys = [f"col_{i}" for i in range(len(columns))]
 
-        # Add columns
-        for col in columns:
-            self.add_column(col)
+        for i, col in enumerate(columns):
+            label = self._build_column_label_text(col, i)
+            self.add_column(label, key=f"col_{i}")
 
-        # Add rows
         for i, resource in enumerate(resources):
             row_key = f"row-{i}"
-            row_values = [str(resource.get(key, "")) for key in column_keys]
-            self.add_row(*row_values, key=row_key)
+            row_values = [resource.get(key, "") for key in column_keys]
             self._all_rows[row_key] = row_values
 
-        # Apply current search filter
-        if self._search_term:
-            self._apply_filter(self._search_term)
+        self._apply_filter(self._search_term)
 
     def filter_by_search(self, search_term: str) -> None:
         """
@@ -90,18 +197,23 @@ class ResourceTable(DataTable):
         self._apply_filter(self._search_term)
 
     def _apply_filter(self, search_term: str) -> None:
-        """Apply the search filter to the table."""
+        """Apply the search filter (and active sort) to the table."""
         self.clear()  # Keeps columns; only clears rows
 
-        if not search_term:
-            # Show all rows
-            for row_key, row_values in self._all_rows.items():
-                self.add_row(*row_values, key=row_key)
+        if search_term:
+            visible = [
+                (rk, rv)
+                for rk, rv in self._all_rows.items()
+                if any(search_term in str(val).lower() for val in rv)
+            ]
         else:
-            # Filter rows by search term
-            for row_key, row_values in self._all_rows.items():
-                if any(search_term in str(val).lower() for val in row_values):
-                    self.add_row(*row_values, key=row_key)
+            visible = list(self._all_rows.items())
+
+        if self._sort_columns:
+            visible = self._sort_items(visible)
+
+        for row_key, row_values in visible:
+            self.add_row(*[str(v) for v in row_values], key=row_key)
 
     def on_data_table_row_selected(self, event) -> None:
         """Handle row selection."""
