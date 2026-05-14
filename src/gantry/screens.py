@@ -16,7 +16,7 @@ from textual.css.query import NoMatches
 import json
 
 from gantry import k8s, state
-from gantry.widgets import ResourceTable, SearchInput, StatusBar, KeybindingsBar
+from gantry.widgets import ResourceTable, SearchInput, StatusBar, KeybindingsBar, FilterPanel
 
 logger = logging.getLogger(__name__)
 
@@ -198,6 +198,7 @@ class ClusterScreen(Screen):
         ("escape", "close_detail_panel", "Close Panel"),
         ("tab", "app.action_switch_screen", "Switch to Helm View"),
         Binding("slash", "focus_search", "Search", priority=True),
+        Binding("f", "focus_filter", "Filter", priority=True),
         ("c", "show_context_picker", "Pick Context"),
         ("d", "describe_resource", "Describe"),
         ("y", "show_yaml", "YAML"),
@@ -343,6 +344,10 @@ class ClusterScreen(Screen):
         self._yaml_full: str = ""
         self._yaml_spec: str = ""
         self._yaml_text_area: Optional[TextArea] = None
+        self._active_filter: str = ""
+        # _raw_resources stores all fetched resources for re-filtering;
+        # _resource_data stores what's currently displayed (matches table rows).
+        self._raw_resources: List[Dict[str, Any]] = []
 
     def compose(self):
         """Compose the cluster screen."""
@@ -371,6 +376,7 @@ class ClusterScreen(Screen):
             with Vertical(id="content-area"):
                 yield ResourceTable(id="resource-table")
                 yield SearchInput(id="search-input")
+                yield FilterPanel(id="filter-panel")
 
             # Detail panel for descriptions and logs (right sidebar)
             with VerticalScroll(id="detail-panel"):
@@ -646,9 +652,12 @@ class ClusterScreen(Screen):
         else:
             return
 
-        table.populate_resources(resources, columns, keys)
-        # Store resource data for actions like describe and logs
-        self._resource_data = resources
+        # Store raw resources for re-filtering when the expression changes.
+        self._raw_resources = resources
+        display_resources = k8s.filter_resources(resources, self._active_filter) if self._active_filter else resources
+        # _resource_data tracks what the table currently shows so cursor_row maps correctly.
+        self._resource_data = display_resources
+        table.populate_resources(display_resources, columns, keys)
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         """Handle sidebar up/down navigation - immediately update resource type.
@@ -665,6 +674,125 @@ class ClusterScreen(Screen):
         search_input.add_class("show")
         search_input.focus()
         self.search_active = True
+
+    def action_focus_filter(self) -> None:
+        """Show and focus the advanced filter panel."""
+        filter_panel: FilterPanel = self.query_one("#filter-panel", FilterPanel)
+        filter_panel.add_class("show")
+        try:
+            inp = filter_panel.query_one("#filter-expr-input")
+            inp.focus()
+        except Exception:
+            filter_panel.focus()
+
+    def on_filter_panel_filter_changed(self, event: FilterPanel.FilterChanged) -> None:
+        """Apply the filter expression to the current resource data."""
+        self._active_filter = event.filter_expr
+        self._apply_active_filter()
+
+    def _apply_active_filter(self) -> None:
+        """Filter _raw_resources by _active_filter and repopulate the table."""
+        filtered = k8s.filter_resources(self._raw_resources, self._active_filter)
+        # Keep _resource_data in sync with what the table shows.
+        self._resource_data = filtered
+        try:
+            table: ResourceTable = self.query_one("#resource-table", ResourceTable)
+            columns, keys = self._get_columns_and_keys()
+            if columns:
+                table.populate_resources(filtered, columns, keys)
+        except Exception:
+            pass
+
+    def _get_columns_and_keys(self):
+        """Return (columns, keys) for the current resource type and namespace."""
+        resource_type = self.current_resource_type
+        is_all = self.current_namespace == "all"
+
+        mapping = {
+            "Pods": (
+                ["Name", "Namespace", "Status", "Ready", "Restarts"] if is_all
+                else ["Name", "Status", "Ready", "Restarts"],
+                ["name", "namespace", "status", "ready", "restarts"] if is_all
+                else ["name", "status", "ready", "restarts"],
+            ),
+            "Deployments": (
+                ["Name", "Namespace", "Replicas", "Ready", "Available"] if is_all
+                else ["Name", "Replicas", "Ready", "Available"],
+                ["name", "namespace", "replicas", "ready_replicas", "available_replicas"] if is_all
+                else ["name", "replicas", "ready_replicas", "available_replicas"],
+            ),
+            "ReplicaSets": (
+                ["Name", "Namespace", "Desired", "Ready", "Available"] if is_all
+                else ["Name", "Desired", "Ready", "Available"],
+                ["name", "namespace", "desired", "ready", "available"] if is_all
+                else ["name", "desired", "ready", "available"],
+            ),
+            "StatefulSets": (
+                ["Name", "Namespace", "Ready", "Age"] if is_all else ["Name", "Ready", "Age"],
+                ["name", "namespace", "ready", "age"] if is_all else ["name", "ready", "age"],
+            ),
+            "DaemonSets": (
+                ["Name", "Namespace", "Desired", "Ready", "Node Selector"] if is_all
+                else ["Name", "Desired", "Ready", "Node Selector"],
+                ["name", "namespace", "desired", "ready", "node_selector"] if is_all
+                else ["name", "desired", "ready", "node_selector"],
+            ),
+            "Jobs": (
+                ["Name", "Namespace", "Completions", "Duration", "Status"] if is_all
+                else ["Name", "Completions", "Duration", "Status"],
+                ["name", "namespace", "completions", "duration", "status"] if is_all
+                else ["name", "completions", "duration", "status"],
+            ),
+            "CronJobs": (
+                ["Name", "Namespace", "Schedule", "Last Run", "Active"] if is_all
+                else ["Name", "Schedule", "Last Run", "Active"],
+                ["name", "namespace", "schedule", "last_run", "active"] if is_all
+                else ["name", "schedule", "last_run", "active"],
+            ),
+            "Services": (
+                ["Name", "Namespace", "Type", "Cluster IP"] if is_all
+                else ["Name", "Type", "Cluster IP"],
+                ["name", "namespace", "type", "cluster_ip"] if is_all
+                else ["name", "type", "cluster_ip"],
+            ),
+            "Ingresses": (
+                ["Name", "Namespace", "Class", "Hosts", "Address"] if is_all
+                else ["Name", "Class", "Hosts", "Address"],
+                ["name", "namespace", "class", "hosts", "address"] if is_all
+                else ["name", "class", "hosts", "address"],
+            ),
+            "Endpoints": (
+                ["Name", "Namespace", "Endpoints"] if is_all else ["Name", "Endpoints"],
+                ["name", "namespace", "endpoints"] if is_all else ["name", "endpoints"],
+            ),
+            "ConfigMaps": (
+                ["Name", "Namespace", "Keys"] if is_all else ["Name", "Keys"],
+                ["name", "namespace", "key_count"] if is_all else ["name", "key_count"],
+            ),
+            "Secrets": (
+                ["Name", "Namespace", "Type", "Keys"] if is_all else ["Name", "Type", "Keys"],
+                ["name", "namespace", "type", "keys"] if is_all else ["name", "type", "keys"],
+            ),
+            "PersistentVolumeClaims": (
+                ["Name", "Namespace", "Status", "Volume", "Capacity"] if is_all
+                else ["Name", "Status", "Volume", "Capacity"],
+                ["name", "namespace", "status", "volume", "capacity"] if is_all
+                else ["name", "status", "volume", "capacity"],
+            ),
+            "PersistentVolumes": (
+                ["Name", "Capacity", "Access Modes", "Status"],
+                ["name", "capacity", "access_modes", "status"],
+            ),
+            "Namespaces": (
+                ["Name", "Status", "Age"],
+                ["name", "status", "age"],
+            ),
+            "Nodes": (
+                ["Name", "Status", "Roles", "Version"],
+                ["name", "status", "roles", "version"],
+            ),
+        }
+        return mapping.get(resource_type, ([], []))
 
     def action_describe_resource(self) -> None:
         """Describe the selected resource."""

@@ -1137,3 +1137,178 @@ class TestGetResourceYaml:
     def test_get_resource_yaml_unsupported_type_returns_none_tuple(self, mock_config):
         result = k8s.get_resource_yaml("foobar", "test", "default")
         assert result == (None, None)
+
+
+# ---------------------------------------------------------------------------
+# Tests for filter_resources
+# ---------------------------------------------------------------------------
+
+SAMPLE_PODS = [
+    {
+        "name": "nginx-abc",
+        "namespace": "default",
+        "status": "Running",
+        "ready": 1,
+        "restarts": 0,
+        "age_seconds": None,
+        "_labels": {"app": "web", "env": "prod"},
+        "_annotations": {"owner": "alice"},
+    },
+    {
+        "name": "redis-xyz",
+        "namespace": "default",
+        "status": "Running",
+        "ready": 1,
+        "restarts": 2,
+        "age_seconds": None,
+        "_labels": {"app": "cache"},
+        "_annotations": {},
+    },
+    {
+        "name": "debug-pod",
+        "namespace": "kube-system",
+        "status": "Pending",
+        "ready": 0,
+        "restarts": 0,
+        "age_seconds": None,
+        "_labels": {"env": "dev"},
+        "_annotations": {"owner": "bob"},
+    },
+]
+
+
+class TestFilterResources:
+    """Tests for filter_resources function."""
+
+    def test_empty_expr_returns_all(self):
+        """Empty filter expression returns all resources unchanged."""
+        result = k8s.filter_resources(SAMPLE_PODS, "")
+        assert result == SAMPLE_PODS
+
+    def test_whitespace_expr_returns_all(self):
+        """Whitespace-only expression returns all resources."""
+        result = k8s.filter_resources(SAMPLE_PODS, "   ")
+        assert result == SAMPLE_PODS
+
+    def test_name_substring(self):
+        """name:pattern filters by substring on the name field."""
+        result = k8s.filter_resources(SAMPLE_PODS, "name:nginx")
+        assert len(result) == 1
+        assert result[0]["name"] == "nginx-abc"
+
+    def test_name_regex(self):
+        """name:/regex/ performs a regex match on the name field."""
+        result = k8s.filter_resources(SAMPLE_PODS, "name:/nginx|redis/")
+        assert len(result) == 2
+        names = {r["name"] for r in result}
+        assert names == {"nginx-abc", "redis-xyz"}
+
+    def test_status_match(self):
+        """status:value filters by exact status (case-insensitive)."""
+        result = k8s.filter_resources(SAMPLE_PODS, "status:Pending")
+        assert len(result) == 1
+        assert result[0]["name"] == "debug-pod"
+
+    def test_status_case_insensitive(self):
+        """status filter is case-insensitive."""
+        result = k8s.filter_resources(SAMPLE_PODS, "status:running")
+        assert len(result) == 2
+
+    def test_label_key_value(self):
+        """label:key=value matches exact label value."""
+        result = k8s.filter_resources(SAMPLE_PODS, "label:app=web")
+        assert len(result) == 1
+        assert result[0]["name"] == "nginx-abc"
+
+    def test_label_key_only(self):
+        """label:key matches any resource that has the label key."""
+        result = k8s.filter_resources(SAMPLE_PODS, "label:env")
+        assert len(result) == 2
+        names = {r["name"] for r in result}
+        assert names == {"nginx-abc", "debug-pod"}
+
+    def test_annotation_key_value(self):
+        """annotation:key=value matches exact annotation value."""
+        result = k8s.filter_resources(SAMPLE_PODS, "annotation:owner=alice")
+        assert len(result) == 1
+        assert result[0]["name"] == "nginx-abc"
+
+    def test_annotation_key_only(self):
+        """annotation:key matches any resource that has the annotation key."""
+        result = k8s.filter_resources(SAMPLE_PODS, "annotation:owner")
+        assert len(result) == 2
+
+    def test_namespace_substring(self):
+        """namespace:value filters by substring on the namespace field."""
+        result = k8s.filter_resources(SAMPLE_PODS, "namespace:kube-system")
+        assert len(result) == 1
+        assert result[0]["name"] == "debug-pod"
+
+    def test_and_logic(self):
+        """AND combines two predicates both must be true."""
+        result = k8s.filter_resources(SAMPLE_PODS, "status:Running AND label:app=web")
+        assert len(result) == 1
+        assert result[0]["name"] == "nginx-abc"
+
+    def test_or_logic(self):
+        """OR returns resources matching either predicate."""
+        result = k8s.filter_resources(SAMPLE_PODS, "label:app=web OR label:app=cache")
+        assert len(result) == 2
+        names = {r["name"] for r in result}
+        assert names == {"nginx-abc", "redis-xyz"}
+
+    def test_and_or_combined(self):
+        """AND binds tighter than OR (left-to-right)."""
+        # label:app=web AND status:Running → nginx-abc
+        # OR name:debug → debug-pod
+        result = k8s.filter_resources(
+            SAMPLE_PODS, "label:app=web AND status:Running OR name:debug"
+        )
+        assert len(result) == 2
+
+    def test_global_regex_search(self):
+        """/pattern/ searches across all non-private string fields."""
+        result = k8s.filter_resources(SAMPLE_PODS, "/nginx/")
+        assert len(result) == 1
+        assert result[0]["name"] == "nginx-abc"
+
+    def test_bare_substring_search(self):
+        """Bare term (no colon) does substring search across string fields."""
+        result = k8s.filter_resources(SAMPLE_PODS, "redis")
+        assert len(result) == 1
+        assert result[0]["name"] == "redis-xyz"
+
+    def test_no_match_returns_empty(self):
+        """Filter that matches nothing returns empty list."""
+        result = k8s.filter_resources(SAMPLE_PODS, "name:nonexistent")
+        assert result == []
+
+    def test_age_younger_than(self):
+        """age:<Xh matches resources with age_seconds > (now - X*3600)."""
+        import time
+        now = time.time()
+        resources = [
+            {"name": "young", "age_seconds": now - 300},   # 5 min old
+            {"name": "old", "age_seconds": now - 7200},    # 2 h old
+        ]
+        result = k8s.filter_resources(resources, "age:<1h")
+        assert len(result) == 1
+        assert result[0]["name"] == "young"
+
+    def test_age_older_than(self):
+        """age:>Xh matches resources with age_seconds < (now - X*3600)."""
+        import time
+        now = time.time()
+        resources = [
+            {"name": "young", "age_seconds": now - 300},
+            {"name": "old", "age_seconds": now - 7200},
+        ]
+        result = k8s.filter_resources(resources, "age:>1h")
+        assert len(result) == 1
+        assert result[0]["name"] == "old"
+
+    def test_invalid_regex_falls_back_gracefully(self):
+        """Invalid regex pattern falls back to no match rather than crashing."""
+        result = k8s.filter_resources(SAMPLE_PODS, "name:/[invalid/")
+        # Should not raise; just return empty or all depending on fallback
+        assert isinstance(result, list)

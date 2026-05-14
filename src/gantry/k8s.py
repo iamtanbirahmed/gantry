@@ -2,7 +2,9 @@
 
 import logging
 import os
-from typing import Any, Dict, List, Optional
+import re
+import time
+from typing import Any, Callable, Dict, List, Optional
 
 import yaml
 
@@ -150,6 +152,8 @@ def list_pods(namespace: str = "default", context: Optional[str] = None) -> List
                     if pod.metadata.creation_timestamp
                     else None
                 ),
+                "_labels": pod.metadata.labels or {},
+                "_annotations": pod.metadata.annotations or {},
             })
         logger.debug(f"list_pods returned {len(result)} pods for namespace={namespace}")
         return result
@@ -251,6 +255,8 @@ def list_deployments(namespace: str = "default", context: Optional[str] = None) 
                 "updated_replicas": deploy.status.updated_replicas or 0,
                 "available_replicas": deploy.status.available_replicas or 0,
                 "strategy_type": deploy.spec.strategy.type if deploy.spec.strategy else None,
+                "_labels": deploy.metadata.labels or {},
+                "_annotations": deploy.metadata.annotations or {},
             })
         logger.debug(f"list_deployments returned {len(result)} deployments for namespace={namespace}")
         return result
@@ -1152,3 +1158,117 @@ def get_pod_logs(
     except Exception as e:
         logger.error(f"Error in get_pod_logs: {e}", exc_info=True)
         return f"Error: {str(e)}"
+
+
+def _parse_duration(duration_str: str) -> Optional[int]:
+    """Parse a duration string like '1h', '30m', '2d' into seconds."""
+    units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+    match = re.fullmatch(r"(\d+)([smhd])", duration_str.strip().lower())
+    if not match:
+        return None
+    return int(match.group(1)) * units[match.group(2)]
+
+
+def _make_filter_predicate(term: str) -> Callable[[Dict[str, Any]], bool]:
+    """Parse a single filter term into a predicate function."""
+    term = term.strip()
+    if not term:
+        return lambda r: True
+
+    if ":" in term:
+        field, _, value = term.partition(":")
+        field = field.strip().lower()
+        value = value.strip()
+
+        if field == "label":
+            if "=" in value:
+                lk, _, lv = value.partition("=")
+                return lambda r, k=lk, v=lv: r.get("_labels", {}).get(k) == v
+            return lambda r, k=value: k in r.get("_labels", {})
+
+        if field == "annotation":
+            if "=" in value:
+                ak, _, av = value.partition("=")
+                return lambda r, k=ak, v=av: r.get("_annotations", {}).get(k) == v
+            return lambda r, k=value: k in r.get("_annotations", {})
+
+        if field == "status":
+            return lambda r, v=value: str(r.get("status", "")).lower() == v.lower()
+
+        if field == "namespace":
+            return lambda r, v=value: v.lower() in str(r.get("namespace", "")).lower()
+
+        if field == "name":
+            if value.startswith("/") and value.endswith("/") and len(value) > 2:
+                try:
+                    pattern = re.compile(value[1:-1])
+                    return lambda r, p=pattern: bool(p.search(str(r.get("name", ""))))
+                except re.error:
+                    pass
+            return lambda r, v=value: v.lower() in str(r.get("name", "")).lower()
+
+        if field == "age":
+            now = time.time()
+            if value and value[0] in ("<", ">"):
+                op = value[0]
+                secs = _parse_duration(value[1:])
+                if secs is not None:
+                    cutoff = now - secs
+                    if op == "<":
+                        return lambda r, c=cutoff: (r.get("age_seconds") or 0) > c
+                    return lambda r, c=cutoff: 0 < (r.get("age_seconds") or 0) < c
+        return lambda r: True
+
+    # No colon: regex if wrapped in /…/, otherwise substring across all string fields
+    if term.startswith("/") and term.endswith("/") and len(term) > 2:
+        try:
+            pattern = re.compile(term[1:-1])
+            return lambda r, p=pattern: any(
+                bool(p.search(str(v)))
+                for k, v in r.items()
+                if not k.startswith("_") and isinstance(v, str)
+            )
+        except re.error:
+            pass
+
+    return lambda r, t=term.lower(): any(
+        t in str(v).lower()
+        for k, v in r.items()
+        if not k.startswith("_") and isinstance(v, str)
+    )
+
+
+def filter_resources(resources: List[Dict[str, Any]], filter_expr: str) -> List[Dict[str, Any]]:
+    """
+    Filter resources by an expression string.
+
+    Syntax:
+        name:nginx            substring match on name
+        name:/nginx.*/        regex match on name
+        status:Running        exact status match (case-insensitive)
+        label:app=web         label key=value match
+        label:app             label key present
+        annotation:key=val    annotation match
+        namespace:kube-system namespace substring match
+        age:<1h               younger than 1 hour (s/m/h/d units)
+        age:>2d               older than 2 days
+        /pattern/             regex across all string fields
+
+    Combine terms with AND / OR (case-insensitive). AND binds tighter than OR.
+    Example: label:app=web AND status=Running OR name:nginx
+    """
+    if not filter_expr or not filter_expr.strip():
+        return resources
+
+    or_groups = re.split(r"\s+OR\s+", filter_expr, flags=re.IGNORECASE)
+    or_predicates: List[Callable[[Dict[str, Any]], bool]] = []
+    for group in or_groups:
+        and_terms = re.split(r"\s+AND\s+", group, flags=re.IGNORECASE)
+        preds = [_make_filter_predicate(t) for t in and_terms if t.strip()]
+        if preds:
+            or_predicates.append(lambda r, ps=preds: all(p(r) for p in ps))
+
+    if not or_predicates:
+        return resources
+
+    return [r for r in resources if any(p(r) for p in or_predicates)]

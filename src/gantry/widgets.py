@@ -1,14 +1,19 @@
 """Custom widgets for Gantry TUI."""
 
+import json
 import logging
+import re
+import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Callable, Tuple
 from rich.text import Text
-from textual.widgets import DataTable, Static, Input
+from textual.widgets import DataTable, Static, Input, Button, Label
 from textual.containers import Container, Horizontal, Vertical
 from textual.message import Message
 from textual.events import Key, MouseDown
 from textual.css.query import NoMatches
+from textual.widget import Widget
 
 logger = logging.getLogger(__name__)
 
@@ -461,9 +466,225 @@ class KeybindingsBar(Static):
 
         # Case 4 & 5: Normal state (depends on screen type)
         if self.screen_type == "cluster":
-            return "←→ Navigate | d Describe | l Logs | r Refresh | c Context | / Search | Tab Helm | q Quit"
+            return "←→ Navigate | d Describe | l Logs | r Refresh | c Context | / Search | f Filter | Tab Helm | q Quit"
         elif self.screen_type == "helm":
             return "↑↓ Navigate | ↵ Expand | r Refresh | Tab Cluster | q Quit"
 
         # Fallback (should not reach here)
         return ""
+
+
+_PRESETS_FILE = Path.home() / ".config" / "gantry" / "filter_presets.json"
+
+
+def _load_filter_presets() -> Dict[str, str]:
+    """Load saved filter presets from disk."""
+    try:
+        if _PRESETS_FILE.exists():
+            data = json.loads(_PRESETS_FILE.read_text())
+            if isinstance(data, dict):
+                return data
+    except Exception:
+        pass
+    return {}
+
+
+def _save_filter_presets(presets: Dict[str, str]) -> None:
+    """Persist filter presets to disk."""
+    try:
+        _PRESETS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _PRESETS_FILE.write_text(json.dumps(presets, indent=2))
+    except Exception:
+        pass
+
+
+class FilterPanel(Widget):
+    """
+    Advanced filter panel for Kubernetes resources.
+
+    Supports a rich filter expression syntax:
+      name:nginx          - substring match on name
+      name:/regex/        - regex match on name
+      status:Running      - exact status (case-insensitive)
+      label:app=web       - label key=value
+      label:app           - label key present
+      annotation:k=v      - annotation match
+      namespace:default   - namespace substring
+      age:<1h             - younger than 1 hour (s/m/h/d)
+      age:>2d             - older than 2 days
+      /pattern/           - regex across all string fields
+
+    Terms can be combined with AND / OR.
+    Presets can be saved and loaded from ~/.config/gantry/filter_presets.json.
+    """
+
+    PLACEHOLDER = "filter: name:nginx OR label:app=web AND status:Running"
+
+    class FilterChanged(Message):
+        """Posted when the filter expression changes."""
+        def __init__(self, filter_expr: str) -> None:
+            self.filter_expr = filter_expr
+            super().__init__()
+
+    class PresetLoaded(Message):
+        """Posted when a preset is loaded."""
+        def __init__(self, name: str, filter_expr: str) -> None:
+            self.name = name
+            self.filter_expr = filter_expr
+            super().__init__()
+
+    CSS = """
+    FilterPanel {
+        height: auto;
+        width: 100%;
+        display: none;
+        border: solid $accent;
+        background: $panel;
+        padding: 0 1;
+    }
+
+    FilterPanel.show {
+        display: block;
+    }
+
+    #filter-row {
+        height: 3;
+        width: 100%;
+        align: left middle;
+    }
+
+    #filter-expr-input {
+        width: 1fr;
+        height: 1;
+        margin: 0 1 0 0;
+    }
+
+    #filter-badge {
+        width: auto;
+        min-width: 10;
+        height: 1;
+        margin: 0 1 0 0;
+        color: $accent;
+    }
+
+    #filter-clear-btn {
+        width: auto;
+        height: 1;
+        margin: 0 1 0 0;
+        min-width: 7;
+    }
+
+    #filter-save-btn {
+        width: auto;
+        height: 1;
+        min-width: 13;
+    }
+
+    #preset-hint {
+        height: 1;
+        color: $text-muted;
+        padding: 0 0 0 1;
+    }
+    """
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._filter_expr: str = ""
+        self._presets: Dict[str, str] = _load_filter_presets()
+
+    def compose(self):
+        """Compose the filter panel UI."""
+        with Horizontal(id="filter-row"):
+            yield Input(
+                placeholder=self.PLACEHOLDER,
+                id="filter-expr-input",
+            )
+            yield Label("0 filters", id="filter-badge")
+            yield Button("Clear", id="filter-clear-btn", variant="default")
+            yield Button("Save preset", id="filter-save-btn", variant="primary")
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Propagate filter changes and update badge."""
+        if event.input.id == "filter-expr-input":
+            self._filter_expr = event.value
+            self._update_badge()
+            self.post_message(self.FilterChanged(event.value))
+
+    def _on_key(self, event: Key) -> None:
+        """Handle escape/enter to hide panel."""
+        if event.key == "escape":
+            event.stop()
+            self.remove_class("show")
+            try:
+                table = self.screen.query_one(ResourceTable)
+                table.focus()
+            except NoMatches:
+                pass
+        elif event.key == "enter":
+            event.stop()
+            self.remove_class("show")
+            try:
+                table = self.screen.query_one(ResourceTable)
+                table.focus()
+            except NoMatches:
+                pass
+        # Other keys are not stopped here so they bubble normally.
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle Clear and Save preset buttons."""
+        if event.button.id == "filter-clear-btn":
+            self._clear()
+        elif event.button.id == "filter-save-btn":
+            self._save_current_as_preset()
+
+    def _clear(self) -> None:
+        """Clear the current filter expression."""
+        try:
+            inp = self.query_one("#filter-expr-input", Input)
+            inp.value = ""
+        except NoMatches:
+            pass
+
+    def _save_current_as_preset(self) -> None:
+        """Save current expression as a numbered preset."""
+        if not self._filter_expr.strip():
+            return
+        name = f"preset_{int(time.time())}"
+        self._presets[name] = self._filter_expr.strip()
+        _save_filter_presets(self._presets)
+        logger.debug(f"FilterPanel: saved preset {name!r} = {self._filter_expr!r}")
+
+    def load_preset(self, name: str) -> None:
+        """Load a named preset into the filter input."""
+        expr = self._presets.get(name, "")
+        try:
+            inp = self.query_one("#filter-expr-input", Input)
+            inp.value = expr
+        except NoMatches:
+            pass
+        self.post_message(self.PresetLoaded(name, expr))
+
+    def get_presets(self) -> Dict[str, str]:
+        """Return the current presets dict (name -> expression)."""
+        self._presets = _load_filter_presets()
+        return self._presets
+
+    def _update_badge(self) -> None:
+        """Update the active-filter-count badge."""
+        expr = self._filter_expr.strip()
+        if not expr:
+            count = 0
+        else:
+            terms = re.split(r"\s+(?:AND|OR)\s+", expr, flags=re.IGNORECASE)
+            count = len([t for t in terms if t.strip()])
+        try:
+            badge = self.query_one("#filter-badge", Label)
+            label_text = f"{count} filter{'s' if count != 1 else ''}"
+            badge.update(label_text)
+        except NoMatches:
+            pass
+
+    @property
+    def filter_expr(self) -> str:
+        """Return the current filter expression."""
+        return self._filter_expr
