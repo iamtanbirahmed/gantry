@@ -144,6 +144,8 @@ class TestListPods:
         pod1.metadata.creation_timestamp = MagicMock()
         pod1.metadata.creation_timestamp.timestamp.return_value = 1000.0
         pod1.spec.containers = [MagicMock(), MagicMock()]
+        pod1.metadata.labels = {"app": "nginx"}
+        pod1.metadata.annotations = None  # exercise the `or {}` fallback
 
         container_status1 = MagicMock()
         container_status1.ready = True
@@ -170,6 +172,8 @@ class TestListPods:
         assert result[0]["ready"] == 2
         assert result[0]["total_containers"] == 2
         assert result[0]["restarts"] == 2
+        assert result[0]["_labels"] == {"app": "nginx"}
+        assert result[0]["_annotations"] == {}
 
     @patch("gantry.k8s.config.load_kube_config")
     def test_list_pods_missing_kubeconfig(self, mock_load):
@@ -273,6 +277,8 @@ class TestListDeployments:
         deploy1.status.updated_replicas = 3
         deploy1.status.available_replicas = 3
         deploy1.spec.strategy.type = "RollingUpdate"
+        deploy1.metadata.labels = {"app": "nginx", "env": "prod"}
+        deploy1.metadata.annotations = None  # exercise the `or {}` fallback
 
         deploy_list = MagicMock()
         deploy_list.items = [deploy1]
@@ -288,6 +294,8 @@ class TestListDeployments:
         assert result[0]["replicas"] == 3
         assert result[0]["ready_replicas"] == 3
         assert result[0]["strategy_type"] == "RollingUpdate"
+        assert result[0]["_labels"] == {"app": "nginx", "env": "prod"}
+        assert result[0]["_annotations"] == {}
 
     @patch("gantry.k8s.config.load_kube_config")
     def test_list_deployments_missing_kubeconfig(self, mock_load):
@@ -1308,7 +1316,9 @@ class TestFilterResources:
         assert result[0]["name"] == "old"
 
     def test_invalid_regex_falls_back_gracefully(self):
-        """Invalid regex pattern falls back to no match rather than crashing."""
+        """Invalid regex pattern falls back to substring match on the literal value."""
         result = k8s.filter_resources(SAMPLE_PODS, "name:/[invalid/")
-        # Should not raise; just return empty or all depending on fallback
-        assert isinstance(result, list)
+        # Falls back to substring search of "/[invalid/" — no SAMPLE_PODS name contains it.
+        assert result == []
+        # And a bare invalid regex also falls back without raising.
+        assert k8s.filter_resources(SAMPLE_PODS, "/[invalid/") == []

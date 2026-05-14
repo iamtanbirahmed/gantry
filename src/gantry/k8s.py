@@ -1201,7 +1201,7 @@ def _make_filter_predicate(term: str) -> Callable[[Dict[str, Any]], bool]:
         if field == "name":
             if value.startswith("/") and value.endswith("/") and len(value) > 2:
                 try:
-                    pattern = re.compile(value[1:-1])
+                    pattern = re.compile(value[1:-1], re.IGNORECASE)
                     return lambda r, p=pattern: bool(p.search(str(r.get("name", ""))))
                 except re.error:
                     pass
@@ -1217,12 +1217,15 @@ def _make_filter_predicate(term: str) -> Callable[[Dict[str, Any]], bool]:
                     if op == "<":
                         return lambda r, c=cutoff: (r.get("age_seconds") or 0) > c
                     return lambda r, c=cutoff: 0 < (r.get("age_seconds") or 0) < c
-        return lambda r: True
+            # Malformed age expression — don't match anything.
+            return lambda r: False
+        # Unknown field — don't match anything.
+        return lambda r: False
 
     # No colon: regex if wrapped in /…/, otherwise substring across all string fields
     if term.startswith("/") and term.endswith("/") and len(term) > 2:
         try:
-            pattern = re.compile(term[1:-1])
+            pattern = re.compile(term[1:-1], re.IGNORECASE)
             return lambda r, p=pattern: any(
                 bool(p.search(str(v)))
                 for k, v in r.items()

@@ -2,13 +2,14 @@
 
 import json
 import logging
+import os
 import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Callable, Tuple
 from rich.text import Text
-from textual.widgets import DataTable, Static, Input, Button, Label
+from textual.widgets import DataTable, Static, Input, Button, Label, Select
 from textual.containers import Container, Horizontal, Vertical
 from textual.message import Message
 from textual.events import Key, MouseDown
@@ -474,7 +475,8 @@ class KeybindingsBar(Static):
         return ""
 
 
-_PRESETS_FILE = Path.home() / ".config" / "gantry" / "filter_presets.json"
+_CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config"))
+_PRESETS_FILE = _CONFIG_HOME / "gantry" / "filter_presets.json"
 
 
 def _load_filter_presets() -> Dict[str, str]:
@@ -484,18 +486,20 @@ def _load_filter_presets() -> Dict[str, str]:
             data = json.loads(_PRESETS_FILE.read_text())
             if isinstance(data, dict):
                 return data
-    except Exception:
-        pass
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Failed to load filter presets from %s: %s", _PRESETS_FILE, exc)
     return {}
 
 
-def _save_filter_presets(presets: Dict[str, str]) -> None:
-    """Persist filter presets to disk."""
+def _save_filter_presets(presets: Dict[str, str]) -> bool:
+    """Persist filter presets to disk. Returns True on success."""
     try:
         _PRESETS_FILE.parent.mkdir(parents=True, exist_ok=True)
         _PRESETS_FILE.write_text(json.dumps(presets, indent=2))
-    except Exception:
-        pass
+        return True
+    except OSError as exc:
+        logger.error("Failed to save filter presets to %s: %s", _PRESETS_FILE, exc)
+        return False
 
 
 class FilterPanel(Widget):
@@ -525,6 +529,9 @@ class FilterPanel(Widget):
         def __init__(self, filter_expr: str) -> None:
             self.filter_expr = filter_expr
             super().__init__()
+
+    class FilterDismissed(Message):
+        """Posted when the filter panel is hidden (Escape or Enter)."""
 
     class PresetLoaded(Message):
         """Posted when a preset is loaded."""
@@ -580,6 +587,17 @@ class FilterPanel(Widget):
         min-width: 13;
     }
 
+    #preset-row {
+        height: 3;
+        width: 100%;
+        align: left middle;
+    }
+
+    #filter-preset-select {
+        width: 1fr;
+        height: 1;
+    }
+
     #preset-hint {
         height: 1;
         color: $text-muted;
@@ -602,6 +620,14 @@ class FilterPanel(Widget):
             yield Label("0 filters", id="filter-badge")
             yield Button("Clear", id="filter-clear-btn", variant="default")
             yield Button("Save preset", id="filter-save-btn", variant="primary")
+        preset_options = [(name, name) for name in self._presets]
+        with Horizontal(id="preset-row"):
+            yield Select(
+                options=preset_options,
+                prompt="Load preset…",
+                id="filter-preset-select",
+                allow_blank=True,
+            )
 
     def on_input_changed(self, event: Input.Changed) -> None:
         """Propagate filter changes and update badge."""
@@ -610,25 +636,31 @@ class FilterPanel(Widget):
             self._update_badge()
             self.post_message(self.FilterChanged(event.value))
 
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Hide panel when user presses Enter inside the filter expression input."""
+        if event.input.id == "filter-expr-input":
+            self._dismiss()
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        """Load a preset when selected from the dropdown."""
+        if event.select.id == "filter-preset-select" and event.value is not Select.BLANK:
+            self.load_preset(str(event.value))
+
     def _on_key(self, event: Key) -> None:
-        """Handle escape/enter to hide panel."""
+        """Handle escape to hide panel (Enter is handled via on_input_submitted)."""
         if event.key == "escape":
             event.stop()
-            self.remove_class("show")
-            try:
-                table = self.screen.query_one(ResourceTable)
-                table.focus()
-            except NoMatches:
-                pass
-        elif event.key == "enter":
-            event.stop()
-            self.remove_class("show")
-            try:
-                table = self.screen.query_one(ResourceTable)
-                table.focus()
-            except NoMatches:
-                pass
+            self._dismiss()
         # Other keys are not stopped here so they bubble normally.
+
+    def _dismiss(self) -> None:
+        """Hide the panel and notify the screen of dismissal."""
+        self.remove_class("show")
+        self.post_message(self.FilterDismissed())
+        try:
+            self.screen.query_one(ResourceTable).focus()
+        except NoMatches:
+            pass
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle Clear and Save preset buttons."""
@@ -646,13 +678,27 @@ class FilterPanel(Widget):
             pass
 
     def _save_current_as_preset(self) -> None:
-        """Save current expression as a numbered preset."""
+        """Save current expression as a uniquely-named preset."""
         if not self._filter_expr.strip():
             return
-        name = f"preset_{int(time.time())}"
+        base = "preset"
+        name = base
+        counter = 1
+        while name in self._presets:
+            name = f"{base}_{counter}"
+            counter += 1
         self._presets[name] = self._filter_expr.strip()
         _save_filter_presets(self._presets)
-        logger.debug(f"FilterPanel: saved preset {name!r} = {self._filter_expr!r}")
+        self._refresh_preset_select()
+        logger.debug("FilterPanel: saved preset %r = %r", name, self._filter_expr)
+
+    def _refresh_preset_select(self) -> None:
+        """Update the preset Select widget options after saves."""
+        try:
+            sel = self.query_one("#filter-preset-select", Select)
+            sel.set_options([(name, name) for name in self._presets])
+        except NoMatches:
+            pass
 
     def load_preset(self, name: str) -> None:
         """Load a named preset into the filter input."""
