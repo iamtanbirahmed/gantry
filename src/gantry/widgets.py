@@ -461,6 +461,10 @@ class KeybindingsBar(Static):
         if self.search_active:
             return "Esc Cancel | ↵ Select"
 
+        # Case 2b: Filter panel active
+        if self.current_panel == "filter":
+            return "Esc/↵ Close | AND/OR | name:… label:… status:… age:<1h"
+
         # Case 3: Helm screen with file preview showing
         if self.screen_type == "helm" and self.helm_preview_open:
             return "↑↓ Navigate | ↵ Expand | Esc Clear preview | r Refresh | Tab Cluster | q Quit"
@@ -598,6 +602,12 @@ class FilterPanel(Widget):
         height: 1;
     }
 
+    #preset-name-input {
+        width: 1fr;
+        height: 1;
+        margin: 0 1;
+    }
+
     #preset-hint {
         height: 1;
         color: $text-muted;
@@ -609,6 +619,7 @@ class FilterPanel(Widget):
         super().__init__(*args, **kwargs)
         self._filter_expr: str = ""
         self._presets: Dict[str, str] = _load_filter_presets()
+        self._filter_timer = None
 
     def compose(self):
         """Compose the filter panel UI."""
@@ -619,7 +630,6 @@ class FilterPanel(Widget):
             )
             yield Label("0 filters", id="filter-badge")
             yield Button("Clear", id="filter-clear-btn", variant="default")
-            yield Button("Save preset", id="filter-save-btn", variant="primary")
         preset_options = [(name, name) for name in self._presets]
         with Horizontal(id="preset-row"):
             yield Select(
@@ -628,13 +638,22 @@ class FilterPanel(Widget):
                 id="filter-preset-select",
                 allow_blank=True,
             )
+            yield Input(placeholder="preset name…", id="preset-name-input")
+            yield Button("Save", id="filter-save-btn", variant="primary")
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        """Propagate filter changes and update badge."""
+        """Propagate filter changes and update badge (debounced)."""
         if event.input.id == "filter-expr-input":
             self._filter_expr = event.value
             self._update_badge()
-            self.post_message(self.FilterChanged(event.value))
+            if self._filter_timer is not None:
+                self._filter_timer.stop()
+            self._filter_timer = self.set_timer(0.25, self._post_filter_changed)
+
+    def _post_filter_changed(self) -> None:
+        """Post FilterChanged after debounce delay."""
+        self._filter_timer = None
+        self.post_message(self.FilterChanged(self._filter_expr))
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         """Hide panel when user presses Enter inside the filter expression input."""
@@ -678,19 +697,32 @@ class FilterPanel(Widget):
             pass
 
     def _save_current_as_preset(self) -> None:
-        """Save current expression as a uniquely-named preset."""
+        """Save current expression as a named preset (uses input field, falls back to auto-name)."""
         if not self._filter_expr.strip():
             return
-        base = "preset"
-        name = base
-        counter = 1
-        while name in self._presets:
-            name = f"{base}_{counter}"
-            counter += 1
+        user_name = ""
+        try:
+            name_inp = self.query_one("#preset-name-input", Input)
+            user_name = name_inp.value.strip()
+        except NoMatches:
+            pass
+        if user_name:
+            name = user_name
+        else:
+            base = "preset"
+            name = base
+            counter = 1
+            while name in self._presets:
+                name = f"{base}_{counter}"
+                counter += 1
         self._presets[name] = self._filter_expr.strip()
         _save_filter_presets(self._presets)
         self._refresh_preset_select()
         logger.debug("FilterPanel: saved preset %r = %r", name, self._filter_expr)
+        try:
+            self.query_one("#preset-name-input", Input).value = ""
+        except NoMatches:
+            pass
 
     def _refresh_preset_select(self) -> None:
         """Update the preset Select widget options after saves."""

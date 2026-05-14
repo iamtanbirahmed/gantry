@@ -1221,6 +1221,8 @@ class TestFilterResources:
         """status filter is case-insensitive."""
         result = k8s.filter_resources(SAMPLE_PODS, "status:running")
         assert len(result) == 2
+        names = {r["name"] for r in result}
+        assert names == {"nginx-abc", "redis-xyz"}
 
     def test_label_key_value(self):
         """label:key=value matches exact label value."""
@@ -1245,6 +1247,8 @@ class TestFilterResources:
         """annotation:key matches any resource that has the annotation key."""
         result = k8s.filter_resources(SAMPLE_PODS, "annotation:owner")
         assert len(result) == 2
+        names = {r["name"] for r in result}
+        assert names == {"nginx-abc", "debug-pod"}
 
     def test_namespace_substring(self):
         """namespace:value filters by substring on the namespace field."""
@@ -1273,6 +1277,8 @@ class TestFilterResources:
             SAMPLE_PODS, "label:app=web AND status:Running OR name:debug"
         )
         assert len(result) == 2
+        names = {r["name"] for r in result}
+        assert names == {"nginx-abc", "debug-pod"}
 
     def test_global_regex_search(self):
         """/pattern/ searches across all non-private string fields."""

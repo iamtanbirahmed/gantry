@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, ClassVar, Dict, List, Optional, Tuple
 from textual.screen import Screen, ModalScreen
 from textual.containers import Container, Vertical, Horizontal, ScrollableContainer, VerticalScroll
 from textual.widgets import Label, Static, Button, OptionList, Input, TextArea, ListView, ListItem, DirectoryTree
@@ -323,7 +323,7 @@ class ClusterScreen(Screen):
 
     # Maps resource_type -> {"all": (columns, keys), "single": (columns, keys)}
     # Used by both _display_resources and _get_columns_and_keys to avoid duplication.
-    RESOURCE_COLUMNS: Dict[str, Dict[str, Tuple[List[str], List[str]]]] = {
+    RESOURCE_COLUMNS: ClassVar[Dict[str, Dict[str, Tuple[List[str], List[str]]]]] = {
         "Pods": {
             "all": (["Name", "Namespace", "Status", "Ready", "Restarts"],
                     ["name", "namespace", "status", "ready", "restarts"]),
@@ -698,15 +698,14 @@ class ClusterScreen(Screen):
     def _apply_active_filter(self) -> None:
         """Filter _raw_resources by _active_filter and repopulate the table."""
         filtered = k8s.filter_resources(self._raw_resources, self._active_filter)
-        # Keep _resource_data in sync with what the table shows.
         self._resource_data = filtered
         try:
             table: ResourceTable = self.query_one("#resource-table", ResourceTable)
-            columns, keys = self._get_columns_and_keys()
-            if columns:
-                table.populate_resources(filtered, columns, keys)
-        except Exception:
-            pass
+        except NoMatches:
+            return
+        columns, keys = self._get_columns_and_keys()
+        if columns:
+            table.populate_resources(filtered, columns, keys)
 
     def _get_columns_and_keys(
         self,
@@ -1139,6 +1138,13 @@ class ClusterScreen(Screen):
 
     def watch_current_resource_type(self, new_type: str) -> None:
         """React to resource type changes."""
+        if self._active_filter:
+            self._active_filter = ""
+            try:
+                fp = self.query_one("#filter-panel", FilterPanel)
+                fp.query_one("#filter-expr-input", Input).value = ""
+            except NoMatches:
+                pass
         self._refresh_resources()
 
     def watch_current_panel(self, new_panel: str) -> None:
